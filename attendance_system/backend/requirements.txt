@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+opencv-python
+face_recognition
+numpy
+pillow
+pandas
+openpyxl
+sqlalchemy
+pydantic
+jdatetime          # برای تاریخ شمسی
