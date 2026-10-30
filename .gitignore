@@ -10,3 +10,4 @@ logs/
 tests/data/
 .claude/
 .pytest_cache/
+.pytest_tmp/
