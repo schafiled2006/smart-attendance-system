@@ -206,3 +206,5 @@ def test_face_encodings_on_sample_image() -> None:
     encodings = face_recognition.face_encodings(rgb, known_face_locations=locations)
     assert encodings
     assert encodings[0].shape == (128,)
+# TEMP FILE FOR STAGE 6
+pass

@@ -20,6 +20,7 @@ from backend.utils import now_tehran, to_iso, setup_logging
 logger = logging.getLogger(__name__)
 
 SESSION_COLUMNS = ("id", "course_id", "started_at", "ended_at", "late_after_minutes", "status")
+COURSE_COLUMNS = ("id", "title", "teacher", "room")
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict:
@@ -128,6 +129,10 @@ def close_session(session_id: int | None = None) -> dict:
     finally:
         connection.close()
 
+    # Clear streak tracker for this session to prevent memory leaks
+    from backend import attendance_service
+    attendance_service.reset_session_tracker(session_id)
+
     logger.info("Session closed: id=%s", session_id)
     return _row_to_dict(row)
 
@@ -179,6 +184,19 @@ def list_sessions(limit: int = 50) -> list[dict]:
     try:
         rows = connection.execute(
             "SELECT * FROM sessions ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    finally:
+        connection.close()
+    return [_row_to_dict(row) for row in rows]
+
+
+def list_courses() -> list[dict]:
+    """Return all courses ordered by id, with exactly the table columns."""
+    setup_logging()
+    connection = database.get_connection()
+    try:
+        rows = connection.execute(
+            "SELECT * FROM courses ORDER BY id"
         ).fetchall()
     finally:
         connection.close()

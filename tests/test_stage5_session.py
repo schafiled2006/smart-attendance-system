@@ -151,3 +151,28 @@ def test_partial_unique_index_blocks_two_active_rows_raw_sql(temp_db, monkeypatc
         connection.rollback()
     finally:
         connection.close()
+
+
+def test_list_courses(temp_db, monkeypatch):
+    """list_courses returns all courses ordered by id with exact columns."""
+    courses = session_manager.list_courses()
+    assert len(courses) == 1
+    assert set(courses[0].keys()) == {"id", "title", "teacher", "room"}
+    assert courses[0]["id"] == 1
+    assert courses[0]["title"] == "کلاس اصلی"
+
+    # Order by id: insert a second course (via raw SQL since there's no add_course yet)
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            "INSERT INTO courses (title, teacher, room) VALUES ('کلاس دوم', '', '')"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    courses = session_manager.list_courses()
+    assert len(courses) == 2
+    assert courses[0]["id"] == 1
+    assert courses[1]["id"] == 2
+    assert courses[1]["title"] == "کلاس دوم"
