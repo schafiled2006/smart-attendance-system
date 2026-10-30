@@ -11,3 +11,4 @@ tests/data/
 .claude/
 .pytest_cache/
 .pytest_tmp/
+*_output.txt
