@@ -1,315 +1,290 @@
-# BACKEND ONLY CONTEXT
-# سیستم حضور و غیاب هوشمند — فقط بک‌اند
-این فایل را کامل به مدل بده. مدل موظف است هر بار قبل از هر کاری آن را بخوان.
+PROJECT CONTEXT: بک‌اند سیستم حضور و غیاب با تشخیص چهره
 
----
-## قوانین اجباری برای مدل (هر بار قبل از شروع کار)
+# ۰. قوانین اجباری برای مدل
 
-1. **اول این فایل را کامل بخوان.**
-2. بلافاصله فایل `progress/current_status.md` را بخوان و ببین آخرین وضعیت چیست.
-3. اگر کار قبلی نصفه مانده، **حتماً از همان نقطه ادامه بده** و از اول شروع نکن.
-4. بعد از اتمام هر استیج یا هر زمان که کار را متوقف می‌کنی، فایل `progress/current_status.md` را آپدیت کن و این موارد را بنویس:
-      - آخرین استیج تکمیل‌شده
-      - استیج فعلی
-      - فایل‌هایی که ساخته یا تغییر کرده‌اند
-      - آیا تست شده یا نه
-      - مشکل یا نکته باقی‌مانده
-      - دستور بعدی
-5. بدون اجازهٔ صریح کاربر، تکنولوژی، ساختار پوشه‌ها یا امsigها توابع را تغییر نده.
-6. فایل‌های استیج‌های قبلی فقط برای رفع باگ دست بخورند و در `current_status.md` ثبت شوند.
-7. هر بار فقط **یک استیج** انجام بده و بعد از آن منتظر تأیید کاربر بمان (مگر اینکه کاربر صریحاً بگوید همه را پشت سر هم انجام بده).
+- هر جلسه کاری، اول این فایل را کامل بخوان و بعد `progress/current_status.md` را.
+- اگر استیجی نصفه مانده، از همان نقطه ادامه بده و از اول شروع نکن.
+- در هر جلسه فقط یک استیج انجام بده. بعد از اتمام، تست‌های همان استیج را اجرا کن. فقط وقتی همه پاس شدند استیج را کامل اعلام کن، `current_status.md` را آپدیت کن و متوقف شو تا تأیید بگیری.
+- بدون اجازه صریح، تکنولوژی، ساختار پوشه‌ها، نام جدول‌ها و ستون‌ها و امضای توابع این سند را تغییر نده. اگر تغییری لازم می‌دانی، اول در `current_status.md` بنویس و بپرس.
+- فایل‌های استیج‌های قبلی فقط برای رفع باگ دست بخورند و تغییر در بخش «باگ‌های شناخته‌شده» ثبت شود.
+- فقط ابزار و کتابخانه رایگان و متن‌باز. در زمان اجرا هیچ سرویس ابری یا اینترنتی نباید لازم باشد.
+- چیزی را که در این سند نیست حدس نزن و بپرس.
+- نام‌ها و کد به انگلیسی هستند. پیام‌های خطای کاربرمحور (که به API یا کاربر می‌رسند) فارسی‌اند.
 
----
+# ۱. هدف و محیط
 
-## هدف پروژه (فقط بک‌اند)
+- سیستم حضور و غیاب خودکار و آفلاین با تشخیص چهره، برای یک کلاس با ۴۰ تا ۵۰ دانشجو.
+- خروجی گزارش اکسل فارسی راست‌به‌چپ با تاریخ شمسی است.
+- محیط: ویندوز، Python 3.11 (۶۴ بیتی)، venv، دستورات PowerShell.
+- سخت‌افزار: فقط CPU. از GPU و CUDA استفاده نمی‌شود و تشخیص چهره با `model="hog"` انجام می‌شود.
+- فرانت‌اند (React) جداگانه ساخته می‌شود و در این کانتکست نیست. بک‌اند فقط API می‌دهد.
 
-ساخت بک‌اند کامل و آفلاین برای سامانه حضور و غیاب هوشمند با تشخیص چهره.
+# ۲. تکنولوژی‌ها و نصب
 
-- زبان: Python 3.10 یا 3.11 (ویندوز)
-- فریم‌ورک API: **FastAPI**
-- دیتابیس: **SQLite**
-- تشخیص چهره: `face_recognition` + OpenCV
-- خروجی گزارش: Excel (openpyxl / pandas)
-- تعداد دانشجو: حدود ۴۰ تا ۵۰ نفر
-- یک کلاس/درس در نسخه فعلی
-- تست اولیه با دوربین لپ‌تاپ و دوربین گوشی (IP Webcam)
+- کتابخانه‌ها: `opencv-python`، `numpy<2`، `pillow`، `dlib-bin`، `face_recognition`، `face_recognition_models`، `Click`، `openpyxl`، `jdatetime`، `tzdata` (برای zoneinfo روی ویندوز)، `fastapi`، `uvicorn`، `python-multipart`، `pytest`، `httpx`.
+- `pandas` لازم نیست. اکسل مستقیم با `openpyxl` ساخته می‌شود.
+- دیتابیس: `sqlite3` داخلی پایتون.
 
-فرانت‌اند جداگانه با React/Vite نوشته شده و این بک‌اند باید API مناسب برای آن فراهم کند.  
-ریپوی فرانت فعلی (`HosinNiazi/Smart-Attendance-System`) بعداً حذف/جایگزین می‌شود؛ بنابراین بک‌اند را مستقل و تمیز بساز.
+دستورات نصب:
 
----
+```powershell
+py -3.11 -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install face_recognition --no-deps
+```
 
-## تصمیم‌های قطعی (تغییر نده)
+- دلیل `--no-deps`: وقتی `dlib-bin` نصب است، `face_recognition` سعی می‌کند `dlib` را از سورس بسازد. اگر نصب `dlib-bin` جواب نداد، جایگزین آن CMake و Visual Studio Build Tools است.
+- اگر هنگام import خطای `pkg_resources` آمد، `setuptools` را به نسخه‌ای که آن را دارد پایین بیاور.
+- بعد از نصب موفق در استیج ۱، با `pip freeze` نسخه‌ها را در `requirements.txt` قفل کن.
 
-| موضوع | تصمیم |
-|-------|--------|
-| سیستم‌ operativo | ویندوز |
-| معماری | FastAPI + SQLite (بدون Node و بدون SQL Server) |
-| احراز هویت | فعلاً شبیه‌سازی‌شده (هر نام کاربری وارد شود). بعداً اضافه می‌شود. |
-| دانشجو | فقط: شماره دانشجویی، نام و نام‌خانوادگی، رشته، ترم |
-|درس | یک درس در نسخه فعلی (جدول courses وجود داشته باشد) |
-| ثبت عکس | دستی: عکس‌ها در `known_faces/<student_id>/` قرار می‌گیرند و یک endpoint/دستور آن‌ها را پردازش می‌کند |
-| چهره ناشناس | فقط در لاگ ثبت شود، حضور ثبت نشود |
-| وضعیت حضور | حاضر / تأخیر / غایب |
-| محاسبه تأخیر | بر اساس `late_threshold_minutes` ذخیره‌شده روی همان جلسه (پیش‌فرض ۱۰ دقیقه) |
-| گزارش اکسل | لیست کامل کلاس با ستون وضعیت (حاضر/تأخیر/غایب) + ساعت ورود |
-| تاریخ | در دیتابیس میلادی (ISO) ذخیره شود؛ در اکسل و پاسخ‌های API تاریخ شمسی هم نمایش داده شود |
-| جلوگیری از تکرار | در سطح دیتابیس با UNIQUE(session_id, student_id) و در_logic سرویس |
-
----
-
-## ساختار پروژه (بک‌اند)
+# ۳. ساختار پروژه
 
 ```text
 attendance_system/
 ├── backend/
 │   ├── __init__.py
-│   ├── main.py                 # نقطه ورود FastAPI
-│   ├── config.py               # تنظیمات مرکزی
-│   ├── database.py             # اتصال SQLite + init_db
-│   ├── models.py               # مدل‌های SQLAlchemy یا dataclass + schema
-│   ├── schemas.py              # Pydantic models برای request/response
-│   ├── routers/
-│   │   ├── students.py
-│   │   ├── courses.py
-│   │   ├── sessions.py
-│   │   ├── attendance.py
-│   │   ├── reports.py
-│   │   └── recognition.py      # endpointهای تشخیص چهره
-│   ├── services/
-│   │   ├── enrollment.py       # ثبت‌نام + میانگین embedding
-│   │   ├── session_manager.py
-│   │   ├── attendance_service.py
-│   │   ├── report_service.py
-│   │   └── face_engine.py      # بارگذاری embeddingها + مقایسه
-│   └── utils.py
-│
-├── known_faces/                # known_faces/<student_id>/*.jpg
-├── embeddings/                 # فایل‌های .npy یا .pkl
-├── reports/                    # خروجی اکسل
-├── logs/                       # app.log
-├── data/
-│   └── attendance.db
-│
-├── progress/
-│   └── current_status.md
-│
-├── PROJECT_CONTEXT.md          # همین فایل یا کپی از آن
-├── requirements.txt
+│   ├── config.py              # همه تنظیمات و مسیرها (تنها منبع مقادیر)
+│   ├── errors.py              # خطاهای سفارشی
+│   ├── utils.py               # ارقام، زمان، شمسی، لاگ
+│   ├── models.py              # SQL جداول + dataclassها
+│   ├── database.py            # اتصال و init_db
+│   ├── recognition.py         # انکود چهره، کش embedding، مقایسه
+│   ├── enrollment.py          # ثبت دانشجو + پردازش عکس‌ها
+│   ├── session_manager.py     # مدیریت جلسه
+│   ├── attendance_service.py  # ثبت حضور، محاسبه وضعیت، process_recognition_result
+│   ├── report_service.py      # خروجی اکسل
+│   └── api/
+│       ├── __init__.py
+│       ├── app.py             # FastAPI (فقط پوسته نازک، بدون منطق کسب‌وکار)
+│       └── schemas.py
+├── known_faces/<student_id>/  # عکس‌های دستی هر دانشجو (نام پوشه فقط شماره ASCII)
+├── embeddings/<student_id>.npy
+├── reports/
+├── logs/app.log
+├── data/attendance.db
+├── tests/
+├── progress/current_status.md
+├── PROJECT_CONTEXT.md
+├── .clinerules
 ├── .gitignore
+├── check_env.py               # بررسی نصب کتابخانه‌ها
+├── manage.py                  # دستورهای CLI غیرتعاملی (argparse)
+├── main_test.py               # تست دوربین
+├── requirements.txt
 └── README.md
 ```
 
----
+# ۴. مقادیر config.py
 
-## ساختار دیتابیس (قطعی)
-
-### جدول students
-- id INTEGER PRIMARY KEY AUTOINCREMENT
-- student_id TEXT UNIQUE NOT NULL          -- شماره دانشجویی
-- full_name TEXT NOT NULL
-- major TEXT                              -- رشته
-- term TEXT                               -- ترم
-- embedding_file TEXT                     -- مسیر فایل embedding
-- created_at TEXT
-
-### جدول courses
-- id INTEGER PRIMARY KEY AUTOINCREMENT
-- course_code TEXT UNIQUE
-- title TEXT NOT NULL
-- teacher TEXT
-- created_at TEXT
-
-(در نسخه فعلی فقط یک ردیف کافی است.)
-
-### جدول sessions
-- session_id TEXT PRIMARY KEY
-- course_id INTEGER
-- start_time TEXT NOT NULL                 -- ISO datetime
-- end_time TEXT
-- status TEXT NOT NULL                     -- active / closed
-- late_threshold_minutes INTEGER DEFAULT 10
-- note TEXT
-- created_at TEXT
-
-### جدول attendance
-- id INTEGER PRIMARY KEY AUTOINCREMENT
-- session_id TEXT NOT NULL
-- student_id TEXT NOT NULL
-- full_name TEXT
-- status TEXT NOT NULL                    -- present / late / absent
-- check_in_time TEXT                      -- فقط برای present و late
-- confidence REAL
-- camera_source TEXT                      -- laptop / phone / manual
-- created_at TEXT
-- UNIQUE(session_id, student_id)
-
----
-
-## قراردادهای مهم توابع/سرویس‌ها
-
-### enrollment
-- `add_student(student_id, full_name, major, term, image_folder) -> dict`
-  - حداقل ۳ و حداکثر ۵ عکس از پوشه را بخواند
-  - میانگین embedding را محاسبه و در `embeddings/` ذخیره کند
-  - رکورد را در students بنویسد
-- `rebuild_embeddings()` برای بازسازی همه
-
-### session_manager
-- `start_session(course_id, late_threshold_minutes=10, note="") -> session_id`
-- `close_session(session_id=None) -> bool`
-- `get_active_session() -> dict | None`
-
-### attendance_service
-- `log_attendance(student_id, confidence, camera_source="laptop") -> dict`
-  - اگر جلسه فعال نباشد → خطا
-  - اگر قبلاً در این session ثبت شده → پیام «قبلاً ثبت شده»
-  - زمان فعلی را با start_time + late_threshold مقایسه کند:
-    - قبل از آستانه → status = present
-    - بعد از آستانه → status = late
-- `mark_absent(session_id, student_id)` (برای ثبت دستی)
-- `process_recognition_result(recognized_list, camera_source) -> list`
-  - تنها نقطه اتصال بین موتور تشخیص چهره و ثبت حضور
-  - recognized_list = [{"student_id", "full_name", "confidence"}, ...]
-
-### face_engine
-- بارگذاری همه embeddingهای شناخته‌شده در حافظه
-- `recognize_frame(frame_bgr) -> list[dict]`
-  - رفتار با چندین چهره: همه را برگرداند
-  - چهره ناشناس: در لاگ بنویسد و در خروجی نیاورد
-  - فقط وقتی قبول کند که فاصله نزدیک‌ترین با فاصله دومین نزدیک‌ترین جدا باشد (margin)
-  - tolerance فقط از config خوانده شود (۰.۵۰ تا ۰.۶۰)
-
----
-
-## Endpointهای پیشنهادی FastAPI (حداقلی)
-
-```
-POST   /api/students                 # ثبت دانشجو (متادیتا)
-POST   /api/students/{id}/enroll     # پردازش عکس‌های known_faces/<id>
-GET    /api/students
-DELETE /api/students/{id}
-
-GET    /api/courses
-POST   /api/courses
-
-POST   /api/sessions/start
-POST   /api/sessions/{id}/close
-GET    /api/sessions/active
-GET    /api/sessions/active
-
-POST   /api/attendance/recognize     # دریافت نتیجه تشخیص یا فریم
-POST   /api/attendance/manual        # ثبت دستی حاضر/غایب
-GET    /api/attendance/session/{id}
-
-GET    /api/reports/session/{id}/excel
-GET    /api/reports/daily
-
-GET    /api/health
-```
-
-CORS برای فرانت (localhost:5173) فعال باشد.
-
----
-
-## تنظیمات (config.py)
+همه مسیرها با `pathlib` و نسبت به ریشه پروژه ساخته می‌شوند. مسیر دیتابیس با متغیر محیطی `ATTENDANCE_DB` قابل override است تا تست‌ها دیتابیس موقت بسازند.
 
 ```python
-FACE_TOLERANCE = 0.55
-FACE_MODEL = "hog"                 # hog برای CPU ویندوز
-PROCESS_EVERY_N_FRAMES = 2
-DEFAULT_LATE_THRESHOLD = 10
-PHONE_CAMERA_URL = "http://192.168.x.x:8080/video"  # قابل تغییر
-DB_PATH = "data/attendance.db"
+FACE_TOLERANCE = 0.55            # باید بین 0.5 و 0.6 بماند
+MATCH_MARGIN = 0.05              # فاصله مجاز دومین نزدیک‌ترین از نزدیک‌ترین
+MIN_PHOTOS = 3
+MAX_PHOTOS = 5
+REQUIRED_CONSECUTIVE_FRAMES = 3
+DEFAULT_LATE_AFTER_MINUTES = 10
+DETECTION_MODEL = "hog"
+FRAME_MAX_WIDTH = 640            # فریم قبل از تشخیص کوچک می‌شود
+PHOTO_MAX_SIDE = 1280
+TIMEZONE = "Asia/Tehran"
+CAMERA_SOURCE = 0                # یا "http://<ip>:8080/video" برای IP Webcam
+PROCESS_EVERY_N_FRAMES = 3       # فقط برای main_test.py
+API_HOST = "127.0.0.1"
+API_PORT = 8000
+CORS_ORIGINS = ["http://localhost:5173"]
 ```
 
----
+# ۵. دیتابیس (قطعی، بدون تغییر)
 
-## ترتیب استیج‌های بک‌اند (اجباری)
+```sql
+CREATE TABLE IF NOT EXISTS students (
+  student_id TEXT PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  major TEXT NOT NULL DEFAULT '',
+  term TEXT NOT NULL DEFAULT '',
+  embedding_path TEXT,                 -- مسیر نسبی .npy ؛ NULL یعنی هنوز پردازش نشده
+  photo_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 
-### استیج ۱ — ساختار progetto و فایل‌های پایه
-- ساخت تمام فولدرها
-- requirements.txt
-- config.py
-- .gitignore (شامل known_faces/, embeddings/, data/, logs/)
-- progress/current_status.md
-- PROJECT_CONTEXT.md (همین محتوا)
+CREATE TABLE IF NOT EXISTS courses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  teacher TEXT NOT NULL DEFAULT '',
+  room TEXT NOT NULL DEFAULT ''
+);
 
-### استیج ۲ — database.py + models.py + schemas.py
-- ایجاد سه/چهار جدول بالا
-- init_db()
--	test ساخت دیتابیس
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id INTEGER NOT NULL REFERENCES courses(id),
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  late_after_minutes INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active','closed'))
+);
 
-### استیج ۳ — enrollment.py + face_engine (بخش بارگذاری)
-- ثبت دانشجو از پوشه عکس
-- میانگین embedding
--	test با ۳ نفر نمونه
+CREATE UNIQUE INDEX IF NOT EXISTS ux_one_active_session
+  ON sessions(status) WHERE status = 'active';
 
-### استیج ۴ — session_manager.py
-- start / close / get_active
-- ذخیره late_threshold روی جلسه
-
-### استیج ۵ — attendance_service.py
-- log_attendance با محاسبه present/late
-- جلوگیری از تکرار
-- process_recognition_result
-
-### استیج ۶ — report_service.py
-- خروجی اکسل کامل با وضعیت و تاریخ شمسی
-
-### استیج ۷ — routers + main.py (FastAPI)
-- تمام endpointها
-- CORS
--	test با Swagger (/docs)
-
-### استیج ۸ — recognition endpoint + تست دوربین
-- اتصال به دوربین لپ‌تاپ و IP Webcam
--	test کامل چرخه: تشخیص → ثبت → گزارش
-
-### استیج ۹ — تست نهایی و رفع باگ
--	test با چند نفر واقعی
-- بررسی ثبت تکراری، تأخیر، غایب، اکسل
-
----
-
-## کارهایی که نباید بکyni
-
-- Flask یا Django اضافه نکن.
-- SQL Server یا PostgreSQL استفاده نکن.
-- Node.js یا Express ننویس.
-- ساختار پوشه‌ها را خودسرانه عوض نکن.
-- از استیج‌ها جلو نزن.
-- برای هر دانشجو فقط یک عکس قبول نکن (حداقل ۳).
-- tolerance را هاردکد نکن؛ فقط از config بخوان.
-- چهره ناشناس را به عنوان دانشجو ثبت نکن.
-- تاریخشمسی را در دیتابیس به عنوان کلید اصلی استفاده نکن (فقط نمایش).
-- بدون آپدیت current_status.md کار را رها نکن.
-
----
-
-## نکات نصب روی ویندوز (حتماً در README بیاید)
-
-```text
-Python 3.10 یا 3.11 توصیه می‌شود.
-pip install cmake
-# اگر dlib نصب نشد، wheel آماده از:
-# https://github.com/sachadee/Dlib
-pip install dlib
-pip install -r requirements.txt
+CREATE TABLE IF NOT EXISTS attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES sessions(id),
+  student_id TEXT NOT NULL REFERENCES students(student_id),
+  checked_at TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('face','manual')),
+  confidence REAL,                     -- فاصله چهره؛ برای manual برابر NULL
+  UNIQUE (session_id, student_id)
+);
 ```
 
-requirements.txt پیشنهادی:
-```
-fastapi
-uvicorn[standard]
-python-multipart
-opencv-python
-face_recognition
-numpy
-pillow
-pandas
-openpyxl
-sqlalchemy
-pydantic
-jdatetime          # برای تاریخ شمسی
-```
+- هر اتصال با `PRAGMA foreign_keys=ON` و `row_factory = sqlite3.Row` باز می‌شود.
+- `init_db()` باید idempotent باشد و اگر جدول `courses` خالی بود، یک درس پیش‌فرض («کلاس اصلی») بسازد.
+- فقط ردیف «حاضر» ذخیره می‌شود. تأخیر و غیبت ذخیره نمی‌شوند و همیشه محاسبه می‌شوند.
+- فهرست کلاس (roster) همه ردیف‌های جدول `students` است، چون فعلاً یک کلاس داریم.
+
+# ۶. قواعد زمان و وضعیت
+
+- همه زمان‌ها به‌صورت متن ISO 8601 با منطقه `Asia/Tehran` ذخیره می‌شوند، مثلاً `2026-10-24T10:05:00+03:30`. از `zoneinfo` استفاده کن.
+- نمایش شمسی فقط در خروجی اکسل و در فیلدهای نمایشی API با `jdatetime` و ارقام ASCII انجام می‌شود. دیتابیس شمسی ندارد.
+- `utils.normalize_digits()` ارقام فارسی و عربی را به ASCII تبدیل می‌کند. همه ورودی‌های `student_id` قبل از هر کاری از آن رد می‌شوند.
+- وضعیت هر دانشجو در یک جلسه:
+  - `present`: رکورد دارد و `checked_at - started_at <= late_after_minutes`
+  - `late`: رکورد دارد و از آن حد گذشته
+  - `absent`: رکورد ندارد
+- برچسب‌های فارسی: حاضر، تأخیر، غایب.
+- `late_after_minutes` هنگام شروع جلسه روی همان جلسه ذخیره می‌شود و بعداً تغییر نمی‌کند.
+- تغییر دستی حضور (افزودن یا حذف) فقط روی جلسه فعال مجاز است. جلسه بسته‌شده قابل تغییر نیست.
+
+# ۷. قواعد تشخیص چهره
+
+- هر دانشجو ۳ تا ۵ عکس در `known_faces/<student_id>/` دارد (حداقل ۳، حداکثر ۵).
+- هر عکس باید دقیقاً یک چهره داشته باشد. عکس‌های بدون چهره یا با چند چهره رد می‌شوند و دلیلشان گزارش می‌شود.
+- جهت عکس با `ImageOps.exif_transpose` اصلاح می‌شود. ضلع بزرگ‌تر عکس به `PHOTO_MAX_SIDE` کوچک می‌شود.
+- embedding دانشجو میانگین انکودینگ‌های ۱۲۸بعدی عکس‌های معتبر است و در `embeddings/<student_id>.npy` ذخیره می‌شود.
+- اگر embedding جدید به embedding دانشجوی دیگری نزدیک‌تر از `FACE_TOLERANCE` بود، فقط هشدار در لاگ و در خروجی ثبت می‌شود و ثبت متوقف نمی‌شود.
+- مقایسه در `recognition.py` انجام می‌شود:
+  - بردارهای همه دانشجویان در یک ماتریس کش در حافظه نگه داشته می‌شوند و بعد از هر پردازش یا حذف دانشجو `reload_embeddings()` صدا زده می‌شود.
+  - اگر دانشجویی نباشد، نتیجه `None` است.
+  - تطابق فقط وقتی پذیرفته می‌شود که نزدیک‌ترین فاصله `<= FACE_TOLERANCE` باشد و فاصله دومین نزدیک‌ترین از اولی حداقل `MATCH_MARGIN` بیشتر باشد (اگر فقط یک دانشجو داریم، شرط margin حذف می‌شود).
+  - چند چهره در یک فریم، هر کدام مستقل پردازش می‌شوند.
+  - چهره ناشناس نادیده گرفته می‌شود و فقط در `logs/app.log` می‌آید (بدون ذخیره تصویر).
+  - ثبت حضور فقط بعد از دیده‌شدن در `REQUIRED_CONSECUTIVE_FRAMES` فریم متوالی انجام می‌شود. اگر دانشجویی در یک فریم پردازش‌شده دیده نشود، شمارنده‌اش صفر می‌شود. شمارنده در حافظه نگه داشته می‌شود (در `StreakTracker`) و با بسته‌شدن جلسه پاک می‌شود.
+  - جلوگیری از تکرار دو لایه دارد: قید `UNIQUE(session_id, student_id)` در دیتابیس و بررسی در `log_attendance`.
+
+# ۸. قرارداد توابع (امضا ثابت است)
+
+**`errors.py`**: کلاس پایه `AppError(code, message_fa)` و زیرکلاس‌های `StudentExistsError`، `StudentNotFoundError`، `StudentHasAttendanceError`، `NoFaceError`، `MultipleFacesError`، `NotEnoughPhotosError`، `SessionAlreadyActiveError`، `NoActiveSessionError`، `SessionNotFoundError`، `SessionClosedError`، `InvalidInputError`، `ReportEmptyError`.
+
+**`utils.py`**:
+
+- `normalize_digits(text: str) -> str`
+- `now_tehran() -> datetime`
+- `to_iso(dt) -> str`
+- `parse_iso(s) -> datetime`
+- `to_jalali_str(dt_or_iso, with_time=False) -> str`
+- `setup_logging() -> None`: `RotatingFileHandler` روی `logs/app.log`، حداکثر ۱ مگابایت × ۳ فایل، UTF-8.
+
+**`database.py`**: `get_connection() -> sqlite3.Connection`، `init_db() -> None`
+
+**`models.py`**: رشته‌های SQL بالا و dataclassهای `Student`، `Course`، `Session`، `AttendanceRecord`.
+
+**`recognition.py`**:
+
+- `load_image_rgb(path) -> np.ndarray`
+- `encode_single_face(rgb) -> np.ndarray`  # shape (128,); NoFaceError / MultipleFacesError
+- `reload_embeddings() -> int`  # تعداد دانشجوی لودشده
+- `match_encoding(enc) -> tuple[str | None, float]`  # تابع خالص و قابل تست با داده مصنوعی
+- `recognize_frame(bgr) -> list[dict]`  # هر عضو: `{"student_id": str|None, "distance": float, "box": (top,right,bottom,left)}`، مختصات box نسبی بین ۰ و ۱ است
+
+**`enrollment.py`**:
+
+- `add_student(student_id, full_name, major="", term="") -> dict`  # پوشه `known_faces/<id>` را هم می‌سازد
+- `process_photos(student_id) -> dict`  # `{"accepted": int, "rejected": [{"file","reason"}], "warnings": [...], "embedding_saved": bool}`
+- `get_student(student_id) -> dict | None`
+- `list_students() -> list[dict]`  # شامل فیلد `has_embedding`
+- `update_student(student_id, full_name=None, major=None, term=None) -> dict`
+- `delete_student(student_id, force=False) -> bool`  # اگر حضور ثبت‌شده دارد و force=False خطای `StudentHasAttendanceError`
+
+**`session_manager.py`**:
+
+- `start_session(course_id=1, late_after_minutes=None) -> dict`  # `SessionAlreadyActiveError` اگر جلسه فعال هست
+- `close_session(session_id=None) -> dict`  # اگر None، جلسه فعال را می‌بندد
+- `get_active_session() -> dict | None`
+- `get_session(session_id) -> dict`
+- `list_sessions(limit=50) -> list[dict]`
+
+**`attendance_service.py`**:
+
+- `log_attendance(session_id, student_id, source="face", confidence=None) -> bool`  # True اگر ثبت جدید و False اگر تکراری. برای `source=="face"` جلسه باید فعال باشد
+- `remove_attendance(session_id, student_id) -> bool`  # فقط جلسه فعال
+- `get_session_attendance(session_id) -> list[dict]`  # همه دانشجوها: `{student_id, full_name, major, term, status, checked_at, source}`
+- `get_session_summary(session_id) -> dict`  # `{present, late, absent, total}`
+- `process_recognition_result(session_id, matches: list[dict]) -> dict`  # تنها نقطه ورود ماژول بینایی به منطق حضور
+
+الگوریتم `process_recognition_result`:
+
+1. جلسه باید فعال باشد، وگرنه `NoActiveSessionError`.
+2. چهره‌های ناشناس را در لاگ ثبت کن.
+3. برای هر دانشجوی شناخته‌شده شمارنده را یکی زیاد کن و شمارنده دانشجوهای دیده‌نشده را صفر کن.
+4. هر کس به آستانه رسید با `log_attendance` ثبت شود و از tracker حذف شود.
+5. خروجی: `{"recorded": [...], "already_present": [...], "pending": {student_id: streak}, "unknown_count": int}`.
+
+**`report_service.py`**:
+
+- `export_session_report(session_id) -> Path`
+- `export_daily_report(date_iso: str) -> Path`  # یک شیت برای هر جلسه آن روز؛ اگر جلسه‌ای نبود `ReportEmptyError`
+
+فرمت اکسل:
+
+- شیت راست‌به‌چپ (`rightToLeft = True`) با فونت فارسی مناسب و عرض ستون‌های تنظیم‌شده.
+- بالای شیت: عنوان، نام درس، تاریخ شمسی، ساعت شروع و پایان و تعداد حاضر، تأخیر و غایب.
+- ستون‌ها: ردیف، شماره دانشجویی (به‌صورت متن)، نام و نام خانوادگی، رشته، ترم، وضعیت، ساعت ورود، روش ثبت (چهره/دستی).
+- همه دانشجوهای کلاس هستند و بر اساس شماره دانشجویی مرتب می‌شوند.
+- نام فایل ASCII است، مثل `attendance_2026-10-24_1005.xlsx` در پوشه `reports/`.
+
+# ۹. API (لایه نازک؛ بدون منطق کسب‌وکار)
+
+- اجرا: `uvicorn backend.api.app:app --reload`. endpointها `def` معمولی هستند (نه `async`)، چون پردازش تصویر CPUمحور است. CORS برای `CORS_ORIGINS` فعال است.
+
+- `GET /health`
+- `GET /students`، `POST /students` (student_id, full_name, major, term)، `PUT /students/{id}`، `DELETE /students/{id}?force=false`
+- `POST /students/{id}/process-photos`
+- `GET /courses`
+- `POST /sessions/start`، `POST /sessions/close`، `GET /sessions/active`، `GET /sessions`
+- `GET /sessions/{id}/attendance` (فهرست محاسبه‌شده به‌همراه summary)
+- `POST /sessions/{id}/recognize` (فایل تصویر JPEG/PNG، خروجی `process_recognition_result` به‌علاوه `faces: [{box, student_id}]`)
+- `PUT /sessions/{id}/attendance/{student_id}` (ثبت دستی حاضر) و `DELETE` همان مسیر (حذف حضور)
+- `GET /sessions/{id}/report` (دانلود اکسل)، `GET /reports/daily?date=YYYY-MM-DD`
+
+- خطاها به‌صورت `{"error": code, "message": پیام فارسی}` برمی‌گردند. نگاشت status: NotFound → 404، Exists/AlreadyActive/HasAttendance/Closed → 409، InvalidInput/NotEnoughPhotos/NoFace/MultipleFaces → 422، NoActiveSession → 409.
+
+# ۱۰. لاگ و حریم خصوصی
+
+- در `logs/app.log` این‌ها ثبت می‌شوند: چهره ناشناس (با نزدیک‌ترین فاصله)، عکس ردشده، هشدار شباهت دو دانشجو، شروع و پایان جلسه و خطاها.
+- پوشه‌های `known_faces/`، `embeddings/`، `data/`، `reports/` و `logs/` داده حساس‌اند و باید در `.gitignore` باشند.
+
+# ۱۱. استیج‌ها و تعریف «تمام‌شدن»
+
+هر استیج فقط با پاس‌شدن تست‌هایش کامل است.
+
+1. **ساختار پایه**: ساخت همه پوشه‌ها و فایل‌های خالی، `config.py`، `errors.py`، `requirements.txt`، `.gitignore`، `.clinerules`، `check_env.py`. نصب `dlib-bin` و `face_recognition` را روی همین ویندوز تست و نسخه‌ها را قفل کن. تمام‌شدن: `python check_env.py` همه importها را OK نشان دهد و `face_recognition.face_encodings` روی یک عکس تستی اجرا شود.
+2. **utils + database + models**: `init_db` جدول‌ها و درس پیش‌فرض را بسازد، دوبار اجرا خطا ندهد و نرمال‌سازی ارقام و تبدیل شمسی تست شده باشند.
+3. **recognition.py**: `match_encoding` با بردارهای مصنوعی تست شود (پذیرش، رد با tolerance، رد با margin، حالت بدون دانشجو). تست با عکس واقعی در صورت وجود `tests/data/` اجرا شود و در غیر این صورت skip شود.
+4. **enrollment.py**: ثبت ۳ دانشجوی نمونه با عکس واقعی، رد عکس بدون چهره، حداقل ۳ عکس و ذخیره‌شدن `.npy`.
+5. **session_manager.py**: شروع و بستن جلسه، رد شروع جلسه دوم و `get_active_session`.
+6. **attendance_service.py**: جلوگیری از ثبت تکراری، منطق ۳ فریم متوالی (با داده مصنوعی)، محاسبه صحیح حاضر، تأخیر و غایب، و ثبت دستی و حذف.
+7. **report_service.py**: تولید فایل اکسل، بازکردن و بررسی ستون‌ها و راست‌به‌چپ بودن.
+8. **API**: تست با `TestClient` برای همه endpointها و کدهای خطا.
+9. **manage.py و main_test.py**:
+   - دستورهای `manage.py`: `init-db`، `add-student`، `process-photos`، `list-students`، `start-session`، `close-session`، `report`.
+   - `main_test.py`: اتصال به `CAMERA_SOURCE`، ابتدا فقط تست اتصال، بعد تشخیص و فراخوانی `process_recognition_result` روی هر N-امین فریم، نمایش کادر و نام در پنجره و خروج با `q`.
+10. **تست نهایی**: چند نفر واقعی، حضور تکراری، خروجی اکسل، مستندسازی مشکلات در `README.md`.
+
+# ۱۲. قوانین تست
+
+- هر استیج یک فایل `tests/test_stageN_*.py` دارد.
+- تست‌ها با دیتابیس موقت اجرا می‌شوند (`ATTENDANCE_DB`)، نه `data/attendance.db`.
+- تست‌هایی که عکس واقعی می‌خواهند اگر `tests/data/` نبود skip می‌شوند.

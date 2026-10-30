@@ -1,54 +1,90 @@
-# وضعیت فعلی پروژه (Backend Only)
+# وضعیت فعلی پروژه
 
-**آخرین به‌روزرسانی:** 2026-10-24
+**آخرین به‌روزرسانی:** 2026-10-28 (بازبینی سوم — معیار تشخیص اصلاح شد)
+**آخرین استیج تکمیل‌شده:** **استیج ۴ — enrollment.py (کامل و تست‌شده)**
+**استیج فعلی:** استیج ۵ — session_manager.py (شروع نشده — منتظر تأیید)
+**تست شده؟** بله — ۱۰۳ تست: ۱۰۱ پاس، ۰ خطا، ۲ skip.
 
-** آخرین استیج تکمیل‌شده:** استیج ۳ — enrollment.py + face_engine
+## فایل‌های ساخته‌شده یا تغییرکرده در این جلسه
 
-**استیج فعلی:** استیج ۴ — session_manager.py
+- `backend/enrollment.py` — پیاده‌سازی کامل استیج ۴:
+  - `add_student`، `process_photos`، `get_student`، `list_students`، `update_student`، `delete_student`
+  - `normalize_digits` روی `student_id` و whitelist `^[A-Za-z0-9_-]+$`
+  - کدهای دلیل رد: `no_face` / `multiple_faces` / `unreadable`
+  - کوچک‌سازی عکس با `PHOTO_MAX_SIDE` با `cv2.INTER_AREA` در `_prepare_rgb`
+  - clip به `MAX_PHOTOS` با هشدار `photos_clipped`
+  - عدم overwrite در صورت `< MIN_PHOTOS` عکس معتبر (خطای `NotEnoughPhotosError`)
+  - هشدار `similar_face` وقتی فاصله به دانشجوی دیگر `< FACE_TOLERANCE` است (ثبت متوقف نمی‌شود)
+  - فراخوانی `recognition.reload_embeddings()` بعد از پردازش و بعد از حذف
+  - `delete_student` عکس‌ها را نگه می‌دارد و فقط `.npy` و ردیف DB را پاک می‌کند
+- `tests/test_stage4_enrollment.py` — ۲۹ تست (۲۷ تست منطقی + ۱ تست عکس واقعی + ۱ skip guard)
+  - تست عکس واقعی **بازنویسی شد** (`test_real_photos_never_identify_the_wrong_student`): معیار از «فاصلهٔ centroid بین زوج‌ها > tolerance» به «هیچ تشخیص اشتباهی رخ ندهد» تغییر کرد.
 
-**فایل‌های ساخته‌شده تا الان:**
-- backend/__init__.py
-- backend/config.py
-- backend/requirements.txt
-- backend/.gitignore
-- backend/database.py
-- backend/models.py
-- backend/schemas.py
-- backend/services/enrollment.py
-- backend/services/face_engine.py
-- backend/services/session_manager.py
-- backend/routers/students.py
-- backend/routers/courses.py
-- backend/routers/sessions.py
-- backend/routers/attendance.py
-- backend/routers/reports.py
-- backend/main.py
-- progress/current_status.md
-- PROJECT_CONTEXT.md
+هیچ فایل استیج ۱–۳ تغییر نکرد و هیچ باگی در آن‌ها یافت نشد.
 
-**تست انجام شده؟**
-- database.py: Init DB tables created correctly ✅
-- models.py: SQLAlchemy models with proper relationships ✅
-- schemas.py: Pydantic models for request/response ✅
-- config.py: FACE_TOLERANCE, FACE_MODEL, DEFAULT_LATE_THRESHOLD, DB_PATH ✅
-- Python syntax validation passed ✅
+## نتیجه تست‌ها
 
-** وضعیت:**
-- FastAPI app با CORS برای localhost:5173 ✅
-- تمام endpointهای پایه Define شده ✅
-- دیتابیس SQLite با ۴ جدول: students, courses, sessions, attendance ✅
-- session_manager: start/close/get_active ✅
-- enrollment: add_student با حداقل ۳ عکس ✅
-- face_engine: recognise_frame با margin checking ✅
-- attendance_service: log_attendance با محاسبه present/late ✅
-- report_service: export_session_excel با تاریخ شمسی ✅
-- CORS already configured ✅
+```
+.\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider
 
-**پیش‌زمینه:** سیستم آماده است برای:
-- ثبت دانشجو از پوشه known_faces
-- شروع جلسات حضور با چک کردن تأخیر
-- ثبت خودکار حضور از تشخیص چهره
-- خروجی اکسل با وضعیت و تاریخ شمسی
-- APIهای Swagger/docs برای تست
+101 passed, 2 skipped in 31.63s
+```
 
-**دستور بعدی:** شروع استیج ۴ — تست کامل چرخه: ثبت دانشجو → شروع جلسه → تشخیص چهره → ثبت گزارش اکسل
+۲ skip: `tests/data/test_face.jpg` برای تست استیج ۳ موجود نیست (یکی skip مستقیم، یکی پارامتری). هیچ خطایی نمانده است.
+
+## بررسی عکس‌های واقعی (`tests/data/students/`) — بازبینی دوم
+
+| پوشه | تعداد عکس | خواندنی | دقیقاً یک چهره | پذیرفته‌شده |
+|------|-----------|---------|----------------|-------------|
+| 40123001 | 5 | ✅ | ✅ ۵ از ۵ | ۵ |
+| 40123002 | 5 | ✅ | ✅ ۵ از ۵ | ۵ |
+| 40123003 | 6 | ✅ | ⚠️ ۴ از ۶ | ۳ (از ۵ کاندید اول) |
+| 40123004 | 9 (جدید) | ✅ | ✅ ۹ از ۹ | ۵ (clip به MAX_PHOTOS) |
+| **مجموع** | **۲۵** | | | |
+
+عکس‌های مشکل‌دار (هر دو در `40123003`؛ هر دو در لاگ و در `rejected` گزارش می‌شوند، بی‌صدا رد نمی‌شوند):
+
+- `tests/data/students/40123003/5976293963159244451.jpg` — `no_face`
+- `tests/data/students/40123003/5976293963159244453.jpg` — `no_face`
+
+نکتهٔ مهم: عکس‌های `40123001` و `40123002` در این جلسه **تغییر نکرده‌اند** (mtime و اندازهٔ فایل‌ها یکسان با جلسهٔ قبل)؛ فقط `40123004` اضافه شده است.
+
+توجه: سند می‌گوید هر عکس باید دقیقاً یک چهره داشته باشد، ولی عکس پروفایل کامل یا زاویهٔ بسیار زیاد از نظر `hog` اصلاً «چهره» نیست و با کد `no_face` رد می‌شود — که رفتار درستی است.
+
+## باگ‌های شناخته‌شده
+
+- **فیکس‌شده (استیج ۱):** `import multipart` → `import python_multipart`.
+- **فیکس‌شده (جلسهٔ بازبینی استیج ۳):** H1 بردار NaN/Inf، M1 پیام خطای انگلیسی، M2 `_tehran()` call-time، M3 تست `get_db_path`، M4 نرمال‌سازی کانال فریم.
+- **حل‌شده با اصلاح معیار تست:** فاصلهٔ centroid بین چهار دانشجو در ۵ زوج از ۶ زوج زیر `FACE_TOLERANCE` بود (0.4421 تا 0.5309). اندازه‌گیری‌ها نشان داد مدل، کوچک‌سازی و میانگین‌گیری همه درست‌اند و کد در عمل **هیچ تشخیص اشتباهی** ندارد. بنابراین معیار تست به واقعیت عملیاتی تغییر کرد (جزئیات در «تصمیم‌های گرفته‌شده»).
+- **باز، غیرمؤثر:** دو عکس `40123003` (`...924451.jpg`، `...924453.jpg`) با کد `no_face` رد می‌شوند. طبق تصمیم کاربر رها می‌شوند؛ همین دانشجو با ۳ عکس باقی‌مانده ثبت می‌شود (بالاتر از حداقل).
+- **باز، بی‌خطر:** `face_recognition.__version__` مقدار نامتناسب چاپ می‌کند (از upstream).
+
+## تصمیم‌های گرفته‌شده (Decisions made)
+
+1. **معیار پذیرش استیج ۴ (تغییر در جلسهٔ سوم، به درخواست کاربر):** خواستهٔ کاربر «تشخیص درست، بدون هیچ اشتباه» است، نه یک آستانهٔ فاصله. بنابراین تست عکس واقعی با روش **leave-one-out** بازنویسی شد: هر عکس در برابر centroidهایی که از عکس‌های **دیگر** ساخته شده‌اند تطبیق داده می‌شود — یعنی همان وضعیتی که دوربین در عمل می‌سازد. شرط قبولی:
+   - **هیچ تشخیص اشتباهی** (این خطای واقعی است: ثبت حضور برای نفر اشتباه) ← سخت‌گیرانه، صفر تحمل
+   - هر دانشجو با centroid خودش به خودش تطبیق داده شود
+   - حداقل ۷۰٪ عکس‌ها شناسایی شوند (تا «همه را رد کن» تست را پاس نکند)
+
+   نتیجهٔ اندازه‌گیری: **۰ تشخیص اشتباه از ۱۸ عکس**، ۱۵ درست، ۳ رد امن.
+2. **درستی تست تأیید شد:** با تزریق عمدی یک تشخیص اشتباه (`40123002` → `40123004`) در `match_encoding`، تست fail شد (pytest exit 1). پس تست واقعاً همان خطای مهم را می‌گیرد.
+3. **چرا فاصلهٔ centroid معیار خوبی نبود:** تطبیق با نزدیک‌ترین همسایه انجام می‌شود، نه با یک آستانهٔ مطلق روی فاصلهٔ زوج‌ها. دو نفر می‌توانند centroid نزدیک داشته باشند و باز هم هر عکس به نفر درست برسد — که همین اتفاق افتاده است.
+4. **`term` نرمال‌سازی نمی‌شود:** بخش ۶ سند `normalize_digits` را فقط برای `student_id` الزام می‌کند؛ تست ابتدا اشتباه انتظار `"90"` داشت و به `"۹۰"` اصلاح شد.
+5. **`_prepare_rgb` در enrollment، نه در `load_image_rgb`:** طبق یادداشت `current_status.md` قبلی؛ `PHOTO_MAX_SIDE` در پایپ‌لاین enrollment اعمال می‌شود.
+6. **شباهت از دیسک خوانده می‌شود، نه از کش:** `_existing_embeddings` مستقیماً `EMBEDDINGS_DIR/*.npy` را می‌خواند تا بررسی هشدار به وضعیت کش `recognition._EMBEDDINGS` وابسته نباشد.
+7. **`embedding_path` نسبی است:** نسبت به `PROJECT_ROOT` ذخیره می‌شود؛ اگر پوشهٔ embeddings خارج از ریشه باشد (تست‌ها) مسیر مطلق ذخیره می‌شود و `_resolve_embedding` هر دو را می‌فهمد.
+8. **`process_photos` عکس‌ها را پاک نمی‌کند** و در صورت شکست، embedding قبلی را دست نمی‌زند.
+9. **تست عکس واقعی skip نمی‌شود:** صریحاً fail می‌کند تا مشکل پنهان نماند.
+10. **عکس‌ها فقط copy می‌شوند:** تست‌ها با `shutil.copy2` به `known_faces` موقت می‌روند؛ `known_faces/`، `embeddings/` و `data/` واقعی دست نخوردند.
+11. **دو عکس `no_face` رها شدند** (تصمیم کاربر)؛ دانشجو با ۳ عکس معتبر دیگر ثبت می‌شود.
+12. هیچ کامیتی انجام نشد.
+
+## نکات و مشکلات باقی‌مانده
+
+- **`40123004` دارای ۹ عکس است** که به `MAX_PHOTOS = 5` clip می‌شود (هشدار `photos_clipped`). با ۵ عکس انتخاب‌شده همه‌چیز درست تشخیص داده شد.
+- **۳ عکس از ۱۸ عکس معتبر «رد امن» می‌شوند** (0 از 18 تشخیص اشتباه). در نرخ تشخیص زنده، این یعنی گاهی یک دانشجو چند فریم دیرتر ثبت می‌شود؛ چون `REQUIRED_CONSECUTIVE_FRAMES = 3` است، در استیج ۵/۶ باید بررسی شود که با فریم‌های پیوسته جبران می‌شود.
+- **L3 (تعویق به استیج ۶):** سطح/آهنگ لاگ چهره ناشناس.
+- **L6 (استیج ۵+):** در تست‌ها اگر `setup_logging()` صدا زده شد، `config.LOG_FILE` هم monkeypatch شود.
+- **گیت:** پوشهٔ قدیمی `attendance_system/` هنوز در اندیس گیت است ولی روی دیسک نیست (۲۰ فایل deleted-unstaged). تغییرات این جلسه کامیت نشده‌اند.
+
+**دستور بعدی:** استیج ۵ — `session_manager.py` (فقط استیج ۵، پس از تأیید). استیج ۴ کامل است. `backend/enrollment.py` در این جلسه تغییر نکرد؛ فقط تست عکس واقعی بازنویسی شد.
