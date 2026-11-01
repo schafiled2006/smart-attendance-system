@@ -1,57 +1,65 @@
 # وضعیت جلسه کاری
 
-**آخرین به‌روزرسانی:** 2026-10-31 (استیج ۷ تکمیل و تایید شده)
-**آخرین استیج تکمیل‌شده:** استیج ۷ — report_service.py (کامل و تست‌شده)
-**استیج فعلی:** استیج ۸ — API integration tests (شروع نشده — منتظر تأیید)
-**تست شده؟** بله — استیج ۵ ۲۱ تست دارد که همه پاس شدند. استیج ۴ (از جمله تست عکس واقعی) هم تایید شده است. کل: ۱۰۱ پاس، ۰ خطا، ۲ skip (دو skip به دلیل عدم وجود tests/data/test_face.jpg برای استیج ۳).
+**آخرین به‌روزرسانی:** 2026-11-01 (استیج ۸ تکمیل و تایید شده)
+**آخرین استیج تکمیل‌شده:** استیج ۸ — FastAPI API layer & integration tests (کامل و تست‌شده)
+**استیج فعلی:** استیج ۹ — manage.py و main_test.py (شروع نشده — منتظر تأیید)
+**تست شده؟** بله — کل تست‌های پروژه: ۱۵۶ پاس، ۰ خطا، ۰ شکست. استیج ۸ به‌تنهایی دارای ۱۷ تست یکپارچگی کامل با TestClient است که همگی پاس شدند.
 
 ## تغییرات این جلسه
 
-- `backend/attendance_service.py` — پیاده‌سازی کامل استیج ۶:
-  - `streak_trackers`: دیکشنری سراسری برای نگهداری شمارنده فریم‌های متوالی.
-  - `reset_session_tracker(session_id)`: پاک کردن حافظه استریک پس از بسته‌شدن جلسه.
-  - `log_attendance(...)`: ثبت حضور با بررسی فعال‌بودن جلسه و جلوگیری از تکرار (IntegrityError).
-  - `remove_attendance(...)`: حذف حضور فقط در جلسات فعال.
-  - `get_session_attendance(session_id)`: محاسبه دقیق وضعیت (present/late/absent) با پارس کردن datetime و مقایسه با `started_at + late_after_minutes`.
-  - `get_session_summary(session_id)`: شمارش تعداد present, late, absent.
-  - `process_recognition_result(session_id, matches)`: منطق ۳ فریم متوالی، مدیریت چهره‌های ناشناس و به‌روزرسانی استریک.
+- `backend/api/schemas.py` — پیاده‌سازی کامل اسکیماهای Pydantic برای استیج ۸:
+  - `HealthResponse`: وضعیت سلامت سیستم.
+  - `StudentCreate`, `StudentUpdate`, `StudentResponse`: مدیریت ساخت، ویرایش و نمایش دانشجو.
+  - `ProcessPhotosResponse`: نتایج پردازش عکس‌ها و ذخیره embedding.
+  - `CourseResponse`: نمایش اطلاعات درس.
+  - `SessionStartRequest`, `SessionCloseRequest`, `SessionResponse`: مدیریت چرخه حیات جلسه.
+  - `AttendanceItem`, `SessionSummary`, `SessionAttendanceResponse`: فهرست حضور و غیاب و آمار جلسه.
+  - `FaceItem`, `RecognitionResponse`: پاسخ تشخیص چهره، فریم‌ها و کادرهای چهره.
+  - `ErrorResponse`: ساختار استاندارد خطاهای API.
 
-- `backend/session_manager.py` — افزودن فراخوانی `attendance_service.reset_session_tracker(session_id)` در انتهای `close_session` (با import داخلی برای جلوگیری از circular import).
+- `backend/api/app.py` — پیاده‌سازی کامل پوسته API (FastAPI) بر اساس نیازمندی‌های استیج ۸:
+  - تعریف تمام endpointها به‌صورت توابع معمولی همگام (`def` به جای `async def`) با توجه به ماهیت CPU-bound پردازش تصویر.
+  - فعال‌سازی CORS برای `CORS_ORIGINS`.
+  - مدیریت سراسری استثناها با هندلرهای `AppError`، `RequestValidationError` و `HTTPException` همراه با نگاشت دقیق کدهای خطا:
+    - NotFound (StudentNotFoundError, SessionNotFoundError, ReportEmptyError) → 404
+    - Conflicts (StudentExistsError, SessionAlreadyActiveError, StudentHasAttendanceError, SessionClosedError, NoActiveSessionError) → 409
+    - Unprocessable Entity (InvalidInputError, NotEnoughPhotosError, NoFaceError, MultipleFacesError) → 422
+  - هندلینگ نرمال‌سازی ارقام فارسی در پارامترهای مسیر و بدنه درخواست.
+  - پیاده‌سازی endpointهای کامل:
+    - `GET /health`
+    - `GET /students`, `POST /students`, `PUT /students/{id}`, `DELETE /students/{id}?force=false`
+    - `POST /students/{id}/process-photos`
+    - `GET /courses`
+    - `POST /sessions/start`, `POST /sessions/close`, `GET /sessions/active`, `GET /sessions`
+    - `GET /sessions/{id}/attendance`
+    - `POST /sessions/{id}/recognize` (دریافت فایل تصویر، دیکود BGR، فراخوانی recognize_frame و process_recognition_result همراه با کادرهای faces)
+    - `PUT /sessions/{id}/attendance/{student_id}` و `DELETE /sessions/{id}/attendance/{student_id}`
+    - `GET /sessions/{id}/report` و `GET /reports/daily?date=YYYY-MM-DD` (با FileResponse برای فایل‌های اکسل تولیدشده)
 
-- `tests/test_stage6_attendance.py` — ۸ تست جامع:
-  - ثبت جدید و تکراری.
-  - نیاز به جلسه فعال برای ثبت و حذف.
-  - حذف حضور و رفتار در جلسه بسته.
-  - محاسبه دقیق present/late/absent و خلاصه.
-  - منطق استریک (۳ فریم)، ریست شدن استریک در فریم بعدی، و پاک شدن کامل پس از `close_session`.
-  - بررسی خطای InvalidInputError برای student_id ناموجود.
-
-- `backend/report_service.py` — پیاده‌سازی کامل استیج ۷:
-  - `export_session_report(session_id)`: تولید فایل اکسل با راست‌به‌چپ بودن، تاریخ شمسی، آمار جلسه، مرتب‌سازی هوشمند (عددی/رشته‌ای) و ترجمه وضعیت‌ها.
-  - `export_daily_report(date_iso)`: تولید فایل اکسل چند شیتی برای تمام جلسات یک روز شمسی، با پاکسازی نام شیت‌ها از کاراکترهای ممنوع و محدودیت ۳۱ کاراکتر.
-  - مدیریت خطای `ReportEmptyError` در صورت نبود داده.
-
-- `tests/test_stage7_report.py` — ۶ تست جامع:
-  - بررسی ساختار، راست‌به‌چپ بودن و مرتب‌سازی گزارش جلسه.
-  - تولید گزارش روزانه با چندین جلسه و بررسی نام شیت‌ها.
-  - بررسی خطای `ReportEmptyError` برای روز بدون جلسه.
-  - بررسی گزارش جلسه بدون دانشجو.
-  - بررسی خطای `SessionNotFoundError` برای session_id ناموجود.
-  - بررسی خالی بودن ستون‌های ساعت ورود و روش ثبت برای دانشجویان غایب.
+- `tests/test_stage8_api.py` — ۱۷ تست یکپارچگی جامع:
+  - تست سلامت (`GET /health`).
+  - تست CRUD کامل دانشجوها و خطاهای 409 (دانشجوی تکراری) و 422 (ورودی نامعتبر).
+  - تست نرمال‌سازی ارقام فارسی در شماره دانشجویی.
+  - تست پردازش عکس‌ها و خطاهای 404 و 422 (عکس ناکافی).
+  - تست دریافت لیست دروس (`GET /courses`).
+  - تست چرخه حیات جلسه (شروع، رد جلسه فعال دوم با 409، دریافت جلسه فعال، لیست جلسات با اعتبارسنجی حد تعداد، بستن جلسه و رد بستن مجدد با 409).
+  - تست ثبت و حذف دستی حضور، جلوگیری از حذف دانشجو دارای حضور با 409، و حذف اجباری با force=true.
+  - تست تشخیص چهره روی جلسه فعال در ۳ فریم متوالی، ثبت حضور پس از آستانه، مدیریت چهره شناخته‌شده قبلی، رد تصویر نامعتبر با 422، و رد فریم روی جلسه بسته یا ناموجود.
+  - تست دانلود گزارش جلسه و گزارش روزانه با اکسل و اعتبارسنجی خطاهای 404 (روز یا جلسه بدون داده) و 422 (فرمت تاریخ نادرست).
+  - تست هدرهای CORS برای مبدأ مجاز.
 
 ## دستورات بعدی (منتظر تأیید)
 
-- استیج ۶: `backend/attendance_service.py` + `tests/test_stage6_*.py` (ثبت حضور، منطق ۳ فریم متوالی، محاسبه حاضر/تاخیر/غایب، ثبت دستی و حذف).
-- استیج ۷: `backend/report_service.py` + `tests/test_report_*.py` (تولید اکسل فارسی).
-- استیج ۸: API integration tests با TestClient.
+- استیج ۹: پیاده‌سازی `manage.py` (دستورات CLI غیرتعاملی با argparse) و `main_test.py` (تست اتصال به دوربین، نمایش کادر و نام چهره‌ها در هر N فریم و خروج با q) + تست‌های مربوطه.
+- استیج ۱۰: تست نهایی جامع و مستندسازی در `README.md`.
 
 ## باگ‌های شناخته‌شده
 
-هیچ باگی در استیج‌های ۱–۵ یافت نشد.
+هیچ باگی در استیج‌های قبلی و استیج ۸ یافت نشد.
 
 ## تصمیمات گرفته‌شده (این جلسه)
 
-- session_manager صرفاً sessions table را مدیریت می‌کند؛ attendance_service در استیج ۶ streak tracker را پاک می‌کند.
-- تمام مقادیر config به صورت config.NAME در زمان صرخ خوانده می‌شوند (امکان monkeypatch در تست‌ها).
-- Returned dicts حاوی دقیقاً ستون‌های جدول sessions هستند؛ لایه API مقادیر جلالی را اضافه می‌کند.
-- لاگ شروع و بسته شدن جلسه در logs/app.log ثبت می‌شود.
+- تمام توابع مسیرها به صورت `def` پیاده‌سازی شدند تا در threadpool فست‌اِی‌پی‌آی اجرا شوند و Event Loop را مسدود نکنند.
+- استثناهای اعتبارسنجی ورودی (`RequestValidationError`) با همان ساختار استاندارد `{"error": "invalid_input", "message": "ورودی نامعتبر است."}` کپسوله شدند.
+- در مسیرهای مربوط به شماره دانشجویی، ارقام با `normalize_digits` قبل از فراخوانی سرویس‌ها به ASCII استانداردسازی می‌شوند.
+- در پاسخ `GET /sessions/{id}/attendance` هم کلید `attendance` و هم `summary` (و برای سازگاری حداکثری کلیدهای کمکی `students` و `records`) برگردانده می‌شوند.
