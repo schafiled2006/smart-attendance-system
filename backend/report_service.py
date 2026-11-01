@@ -58,8 +58,16 @@ def _write_session_to_sheet(ws, session: dict, attendance: list[dict], summary: 
     
     ws["A1"] = f"گزارش حضور و غیاب: {course_title}"
     ws["A1"].font = Font(bold=True, size=14)
+    ws["A1"].alignment = Alignment(horizontal="right", vertical="center")
+    ws.merge_cells("A1:H1")
+
     ws["A2"] = f"تاریخ: {date_str} | ساعت شروع: {time_str}"
+    ws["A2"].alignment = Alignment(horizontal="right", vertical="center")
+    ws.merge_cells("A2:H2")
+
     ws["A3"] = f"آمار: حاضر: {summary['present']} | تأخیر: {summary['late']} | غایب: {summary['absent']} | کل: {summary['total']}"
+    ws["A3"].alignment = Alignment(horizontal="right", vertical="center")
+    ws.merge_cells("A3:H3")
     
     # Column headers
     headers = ["ردیف", "شماره دانشجویی", "نام و نام خانوادگی", "رشته", "ترم", "وضعیت", "ساعت ورود", "روش ثبت"]

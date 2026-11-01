@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 
 from backend import config, database
@@ -16,12 +17,14 @@ logger = logging.getLogger(__name__)
 
 # Global streak tracker: session_id -> {student_id: streak_count}
 streak_trackers: dict[int, dict[str, int]] = {}
+_streak_lock = threading.Lock()
 
 
 def reset_session_tracker(session_id: int) -> None:
     """Clear streak tracker for a specific session."""
-    if session_id in streak_trackers:
-        del streak_trackers[session_id]
+    with _streak_lock:
+        if session_id in streak_trackers:
+            del streak_trackers[session_id]
 
 
 def log_attendance(session_id: int, student_id: str, source: str = "face", confidence: float | None = None) -> bool:
@@ -219,55 +222,56 @@ def process_recognition_result(session_id: int, matches: list[dict]) -> dict:
     finally:
         connection.close()
 
-    if session_id not in streak_trackers:
-        streak_trackers[session_id] = {}
-    
-    tracker = streak_trackers[session_id]
     recorded = []
     already_present = []
     unknown_count = 0
-    
-    # Track which students were seen in this frame
     seen_in_frame = set()
-    
-    for match in matches:
-        student_id = match.get("student_id")
-        distance = match.get("distance")
-        
-        if student_id is None:
-            unknown_count += 1
-            logger.info("چهره ناشناس دیده شد (فاصله: %.3f)", distance)
-            continue
-            
-        seen_in_frame.add(student_id)
-        
-        if student_id in present_students:
-            already_present.append(student_id)
-            continue
-            
-        # Increment streak
-        tracker[student_id] = tracker.get(student_id, 0) + 1
-        
-        if tracker[student_id] >= config.REQUIRED_CONSECUTIVE_FRAMES:
-            # Log attendance
-            success = log_attendance(session_id, student_id, source="face", confidence=distance)
-            if success:
-                recorded.append(student_id)
-                present_students.add(student_id)
-                del tracker[student_id]
-            else:
-                # Should not happen due to present_students check, but just in case
+
+    with _streak_lock:
+        if session_id not in streak_trackers:
+            streak_trackers[session_id] = {}
+        tracker = streak_trackers[session_id]
+
+        for match in matches:
+            student_id = match.get("student_id")
+            distance = match.get("distance")
+
+            if student_id is None:
+                unknown_count += 1
+                logger.info("چهره ناشناس دیده شد (فاصله: %.3f)", distance)
+                continue
+
+            seen_in_frame.add(student_id)
+
+            if student_id in present_students:
                 already_present.append(student_id)
+                continue
+
+            # Increment streak
+            tracker[student_id] = tracker.get(student_id, 0) + 1
+
+            if tracker[student_id] >= config.REQUIRED_CONSECUTIVE_FRAMES:
+                # Log attendance
+                success = log_attendance(session_id, student_id, source="face", confidence=distance)
+                if success:
+                    recorded.append(student_id)
+                    present_students.add(student_id)
+                    del tracker[student_id]
+                else:
+                    # Should not happen due to present_students check, but just in case
+                    already_present.append(student_id)
+                    del tracker[student_id]
+
+        # Reset streak for students not seen in this frame (delete to prevent memory leak)
+        for student_id in list(tracker.keys()):
+            if student_id not in seen_in_frame:
                 del tracker[student_id]
-                
-    # Reset streak for students not seen in this frame
-    for student_id in list(tracker.keys()):
-        if student_id not in seen_in_frame:
-            tracker[student_id] = 0
-            
+
+        pending_copy = dict(tracker)
+
     return {
         "recorded": recorded,
         "already_present": already_present,
-        "pending": {k: v for k, v in tracker.items() if v > 0},
+        "pending": pending_copy,
         "unknown_count": unknown_count,
     }

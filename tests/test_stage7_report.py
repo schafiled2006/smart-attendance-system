@@ -82,7 +82,28 @@ def test_export_session_report_structure_and_rtl(temp_db_and_reports):
     ws = wb.active
     
     assert ws.sheet_view.rightToLeft is True
+    
+    # Check rows 1 to 5: headers, merged ranges, summary info
+    assert "گزارش حضور و غیاب: ریاضی ۱" in str(ws["A1"].value)
+    assert "تاریخ:" in str(ws["A2"].value)
+    assert "ساعت شروع:" in str(ws["A2"].value)
+    assert "حاضر: 1" in str(ws["A3"].value)
+    assert "تأخیر: 1" in str(ws["A3"].value)
+    assert "غایب: 0" in str(ws["A3"].value)
+    assert "کل: 2" in str(ws["A3"].value)
+
+    merged_str_ranges = [str(r) for r in ws.merged_cells.ranges]
+    assert "A1:H1" in merged_str_ranges
+    assert "A2:H2" in merged_str_ranges
+    assert "A3:H3" in merged_str_ranges
+
     assert ws["A6"].value == "ردیف"
+    assert ws["B6"].value == "شماره دانشجویی"
+    assert ws["C6"].value == "نام و نام خانوادگی"
+    assert ws["D6"].value == "رشته"
+    assert ws["E6"].value == "ترم"
+    assert ws["F6"].value == "وضعیت"
+    assert ws["G6"].value == "ساعت ورود"
     assert ws["H6"].value == "روش ثبت"
     
     # Check sorting (numeric)
@@ -121,6 +142,18 @@ def test_export_daily_report_multiple_sessions(temp_db_and_reports):
     # Check sheet names contain session ID and are cleaned
     assert any("1_" in name for name in wb.sheetnames)
     assert any("2_" in name for name in wb.sheetnames)
+
+    # Detailed content check for each sheet
+    for sheet_name in wb.sheetnames:
+        sheet = wb[sheet_name]
+        assert sheet.sheet_view.rightToLeft is True
+        assert "گزارش حضور و غیاب:" in str(sheet["A1"].value)
+        assert "تاریخ:" in str(sheet["A2"].value)
+        assert "آمار:" in str(sheet["A3"].value)
+        assert sheet["A6"].value == "ردیف"
+        assert sheet["B6"].value == "شماره دانشجویی"
+        assert sheet["B7"].value == "100"
+        assert sheet["F7"].value == "حاضر"
 
 
 def test_export_daily_report_empty_raises_error(temp_db_and_reports):

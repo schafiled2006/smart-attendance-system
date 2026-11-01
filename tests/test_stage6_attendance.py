@@ -133,7 +133,107 @@ def test_process_recognition_result_streak_reset(temp_db_and_tracker):
     assert attendance_service.streak_trackers[session["id"]]["S001"] == 1
     
     attendance_service.process_recognition_result(session["id"], [])
-    assert attendance_service.streak_trackers[session["id"]]["S001"] == 0
+    assert "S001" not in attendance_service.streak_trackers[session["id"]]
+
+
+def test_exact_boundary_present(temp_db_and_tracker):
+    session = session_manager.start_session(course_id=1, late_after_minutes=10)
+    _create_student("S_ON_TIME")
+    _create_student("S_LATE")
+    
+    from backend.utils import parse_iso
+    started = parse_iso(session["started_at"])
+    
+    # Exact boundary: checked_at == started + 10 minutes -> must be PRESENT
+    exact_time = to_iso(started + timedelta(minutes=10))
+    # 1 second after boundary -> must be LATE
+    late_time = to_iso(started + timedelta(minutes=10, seconds=1))
+    
+    connection = database.get_connection()
+    try:
+        connection.execute(
+            "INSERT INTO attendance (session_id, student_id, checked_at, source) VALUES (?, ?, ?, 'manual')",
+            (session["id"], "S_ON_TIME", exact_time),
+        )
+        connection.execute(
+            "INSERT INTO attendance (session_id, student_id, checked_at, source) VALUES (?, ?, ?, 'manual')",
+            (session["id"], "S_LATE", late_time),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+        
+    records = attendance_service.get_session_attendance(session["id"])
+    rec_on_time = next(r for r in records if r["student_id"] == "S_ON_TIME")
+    rec_late = next(r for r in records if r["student_id"] == "S_LATE")
+    assert rec_on_time["status"] == "present"
+    assert rec_late["status"] == "late"
+
+
+def test_streak_gap_reset_scenario(temp_db_and_tracker):
+    session = session_manager.start_session(course_id=1, late_after_minutes=10)
+    _create_student("S_GAP")
+    
+    # Frame 1: seen
+    res1 = attendance_service.process_recognition_result(session["id"], [{"student_id": "S_GAP", "distance": 0.4}])
+    assert res1["pending"]["S_GAP"] == 1
+    assert res1["recorded"] == []
+    
+    # Frame 2: seen
+    res2 = attendance_service.process_recognition_result(session["id"], [{"student_id": "S_GAP", "distance": 0.4}])
+    assert res2["pending"]["S_GAP"] == 2
+    assert res2["recorded"] == []
+    
+    # Frame 3: absent -> streak reset/deleted
+    res3 = attendance_service.process_recognition_result(session["id"], [])
+    assert "S_GAP" not in res3["pending"]
+    assert res3["recorded"] == []
+    
+    # Frame 4: seen again -> starts at 1, not 3!
+    res4 = attendance_service.process_recognition_result(session["id"], [{"student_id": "S_GAP", "distance": 0.4}])
+    assert res4["pending"]["S_GAP"] == 1
+    assert res4["recorded"] == []
+    
+    # Frame 5: seen again -> 2
+    res5 = attendance_service.process_recognition_result(session["id"], [{"student_id": "S_GAP", "distance": 0.4}])
+    assert res5["pending"]["S_GAP"] == 2
+    assert res5["recorded"] == []
+
+
+def test_unknown_face_logging(temp_db_and_tracker, caplog):
+    session = session_manager.start_session(course_id=1, late_after_minutes=10)
+    
+    with caplog.at_level("INFO"):
+        res = attendance_service.process_recognition_result(
+            session["id"], [{"student_id": None, "distance": 0.75}]
+        )
+    assert res["unknown_count"] == 1
+    assert any("چهره ناشناس دیده شد" in record.message for record in caplog.records)
+
+
+def test_concurrent_multithreaded_streak(temp_db_and_tracker):
+    from concurrent.futures import ThreadPoolExecutor
+    session = session_manager.start_session(course_id=1, late_after_minutes=10)
+    _create_student("S_CONCURRENT")
+    
+    results = []
+    def worker():
+        res = attendance_service.process_recognition_result(
+            session["id"], [{"student_id": "S_CONCURRENT", "distance": 0.3}]
+        )
+        results.append(res)
+        
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(worker) for _ in range(10)]
+        for f in futures:
+            f.result()
+            
+    attendance = attendance_service.get_session_attendance(session["id"])
+    assert len(attendance) == 1
+    assert attendance[0]["status"] == "present"
+    recorded_total = sum(len(r["recorded"]) for r in results)
+    assert recorded_total == 1
+
 
 
 def test_streak_trackers_cleared_after_close_session(temp_db_and_tracker):

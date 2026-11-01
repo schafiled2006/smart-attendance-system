@@ -247,6 +247,12 @@ def test_manual_attendance_and_delete_protection(client: TestClient):
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
+    # Duplicate manual log -> returns success=False with reason="already_present"
+    dup_resp = client.put(f"/sessions/{session_id}/attendance/std_att")
+    assert dup_resp.status_code == 200
+    assert dup_resp.json()["success"] is False
+    assert dup_resp.json()["reason"] == "already_present"
+
     # Attendance query returns student as present
     resp = client.get(f"/sessions/{session_id}/attendance")
     assert resp.status_code == 200
@@ -258,6 +264,9 @@ def test_manual_attendance_and_delete_protection(client: TestClient):
     assert records[0]["student_id"] == "std_att"
     assert records[0]["status"] == "present"
     assert records[0]["source"] == "manual"
+    # Ensure redundant keys students/records are not present in response
+    assert "students" not in data or data["students"] is None
+    assert "records" not in data or data["records"] is None
 
     # Trying to delete student without force returns 409
     resp = client.delete("/students/std_att?force=false")
@@ -313,6 +322,24 @@ def test_recognize_endpoint_flow(client: TestClient, monkeypatch: pytest.MonkeyP
     frame_bgr = np.zeros((100, 100, 3), dtype=np.uint8)
     _, encoded = cv2.imencode(".jpg", frame_bgr)
     image_bytes = encoded.tobytes()
+
+    # Case 0: File exceeds 10MB limit returns 413
+    oversized = b"x" * (10 * 1024 * 1024 + 100)
+    resp = client.post(
+        f"/sessions/{session_id}/recognize",
+        files={"file": ("large.jpg", oversized, "image/jpeg")},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["error"] == "payload_too_large"
+    assert "بیش از حد مجاز" in resp.json()["message"]
+
+    # Case 0b: Empty file returns 422
+    resp = client.post(
+        f"/sessions/{session_id}/recognize",
+        files={"file": ("empty.jpg", b"", "image/jpeg")},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "invalid_input"
 
     # Case 1: Corrupted or non-image file returns 422
     resp = client.post(
@@ -482,6 +509,12 @@ def test_session_start_default_body(client: TestClient):
 
 
 def test_session_close_by_id(client: TestClient):
+    # Test closing active session with empty body {}
+    client.post("/sessions/start")
+    resp_close_empty = client.post("/sessions/close", json={})
+    assert resp_close_empty.status_code == 200
+    assert resp_close_empty.json()["status"] == "closed"
+
     resp = client.post("/sessions/start")
     session_id = resp.json()["id"]
 

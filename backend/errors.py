@@ -104,3 +104,12 @@ class InvalidInputError(AppError):
 class ReportEmptyError(AppError):
     def __init__(self):
         super().__init__("report_empty", "داده‌ای برای تولید گزارش وجود ندارد.")
+
+
+class PayloadTooLargeError(AppError):
+    def __init__(self, message_fa: str | None = None):
+        super().__init__(
+            "payload_too_large",
+            message_fa or "حجم فایل تصویر بیش از حد مجاز است (حداکثر ۱۰ مگابایت).",
+        )
+

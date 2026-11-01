@@ -88,8 +88,6 @@ class SessionSummary(BaseModel):
 class SessionAttendanceResponse(BaseModel):
     attendance: list[AttendanceItem]
     summary: SessionSummary
-    students: list[AttendanceItem] | None = None
-    records: list[AttendanceItem] | None = None
 
 
 class FaceItem(BaseModel):

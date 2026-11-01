@@ -44,6 +44,7 @@ from backend.errors import (
     NoActiveSessionError,
     NoFaceError,
     NotEnoughPhotosError,
+    PayloadTooLargeError,
     ReportEmptyError,
     SessionAlreadyActiveError,
     SessionClosedError,
@@ -55,6 +56,8 @@ from backend.errors import (
 from backend.utils import normalize_digits, setup_logging
 
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 ERROR_STATUS_MAP: dict[type[AppError], int] = {
     StudentNotFoundError: 404,
@@ -69,6 +72,7 @@ ERROR_STATUS_MAP: dict[type[AppError], int] = {
     NotEnoughPhotosError: 422,
     NoFaceError: 422,
     MultipleFacesError: 422,
+    PayloadTooLargeError: 413,
 }
 
 
@@ -194,15 +198,8 @@ def start_session(payload: SessionStartRequest | None = None):
 
 
 @app.post("/sessions/close", response_model=SessionResponse)
-def close_session(
-    payload: SessionCloseRequest | None = None,
-    session_id: int | None = None,
-):
-    target_id = (
-        payload.session_id
-        if (payload is not None and payload.session_id is not None)
-        else session_id
-    )
+def close_session(payload: SessionCloseRequest | None = None):
+    target_id = payload.session_id if payload is not None else None
     return session_manager.close_session(session_id=target_id)
 
 
@@ -226,16 +223,22 @@ def get_session_attendance(id: int):
     return {
         "attendance": attendance,
         "summary": summary,
-        "students": attendance,
-        "records": attendance,
     }
 
 
 @app.post("/sessions/{id}/recognize", response_model=RecognitionResponse)
 def recognize(id: int, file: UploadFile = File(...)):
+    # Verify session exists and is active before doing heavy image processing
+    session = session_manager.get_session(id)
+    if session["status"] != "active":
+        raise NoActiveSessionError()
+
     contents = file.file.read()
     if not contents:
         raise InvalidInputError("فایل تصویر خالی است.")
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise PayloadTooLargeError()
+
     nparr = np.frombuffer(contents, np.uint8)
     bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if bgr is None:
@@ -264,7 +267,10 @@ def log_manual_attendance(id: int, student_id: str):
         student_id=cleaned_id,
         source="manual",
     )
-    return {"success": success, "session_id": id, "student_id": cleaned_id}
+    result = {"success": success, "session_id": id, "student_id": cleaned_id}
+    if not success:
+        result["reason"] = "already_present"
+    return result
 
 
 @app.delete("/sessions/{id}/attendance/{student_id}")
