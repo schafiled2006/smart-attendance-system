@@ -4,6 +4,7 @@ Implemented in stage 7.
 """
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import re
 from pathlib import Path
@@ -14,7 +15,7 @@ from openpyxl.styles import Alignment, Font
 
 from backend import config, database
 from backend.attendance_service import get_session_attendance, get_session_summary
-from backend.errors import ReportEmptyError, SessionNotFoundError
+from backend.errors import InvalidInputError, ReportEmptyError, SessionNotFoundError
 from backend.session_manager import get_session
 from backend.utils import parse_iso, setup_logging
 
@@ -148,20 +149,32 @@ def export_session_report(session_id: int) -> Path:
 
 
 def export_daily_report(date_iso: str) -> Path:
-    """Export daily attendance report for all sessions on a given Jalali date.
+    """Export daily attendance report for all sessions on a given Gregorian date.
     
     Args:
-        date_iso: The Jalali date in YYYY-MM-DD format.
+        date_iso: The Gregorian date in YYYY-MM-DD format.
         
     Returns:
         Path to the generated Excel file.
         
     Raises:
+        InvalidInputError: If date format is invalid, values are out of range, or a Shamsi date is passed.
         ReportEmptyError: If no sessions exist for the given date.
     """
+    if not isinstance(date_iso, str) or not re.match(r"^\d{4}-\d{2}-\d{2}$", date_iso):
+        raise InvalidInputError("فرمت تاریخ باید YYYY-MM-DD باشد.")
+    
+    try:
+        parsed_date = datetime.strptime(date_iso, "%Y-%m-%d").date()
+    except ValueError:
+        raise InvalidInputError("تاریخ میلادی واردشده نامعتبر است.")
+        
+    if parsed_date.year < 1900:
+        raise InvalidInputError("تاریخ باید به تقویم میلادی باشد؛ تاریخ شمسی پذیرفته نمی‌شود.")
+
     setup_logging()
     
-    # Get all sessions and filter by Jalali date
+    # Get all sessions and filter by Gregorian date (started_at[:10])
     connection = database.get_connection()
     try:
         rows = connection.execute("SELECT * FROM sessions ORDER BY started_at").fetchall()
@@ -170,10 +183,8 @@ def export_daily_report(date_iso: str) -> Path:
         
     sessions = []
     for row in rows:
-        dt = parse_iso(row["started_at"])
-        jalali = jdatetime.datetime.fromgregorian(datetime=dt)
-        jalali_date_str = f"{jalali.year:04d}-{jalali.month:02d}-{jalali.day:02d}"
-        if jalali_date_str == date_iso:
+        started_at = row["started_at"]
+        if started_at and started_at[:10] == date_iso:
             sessions.append(dict(row))
             
     if not sessions:

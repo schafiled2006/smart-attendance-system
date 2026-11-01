@@ -461,24 +461,25 @@ def test_daily_report_download(client: TestClient):
     started_at = session_resp.json()["started_at"]
     client.post("/sessions/close")
 
-    # Calculate Jalali date
-    dt = parse_iso(started_at)
-    jalali = jdatetime.datetime.fromgregorian(datetime=dt)
-    jalali_date = f"{jalali.year:04d}-{jalali.month:02d}-{jalali.day:02d}"
-
-    # Download daily report
-    resp = client.get(f"/reports/daily?date={jalali_date}")
+    # Download daily report with Gregorian date
+    gregorian_date = started_at[:10]
+    resp = client.get(f"/reports/daily?date={gregorian_date}")
     assert resp.status_code == 200
     assert "spreadsheetml.sheet" in resp.headers["content-type"]
     assert len(resp.content) > 1000
 
     # Date with no sessions returns 404 report_empty
-    resp = client.get("/reports/daily?date=1399-01-01")
+    resp = client.get("/reports/daily?date=2020-01-01")
     assert resp.status_code == 404
     assert resp.json()["error"] == "report_empty"
 
     # Malformed date returns 422
     resp = client.get("/reports/daily?date=invalid-date")
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "invalid_input"
+
+    # Shamsi date returns 422 invalid_input
+    resp = client.get("/reports/daily?date=1403-08-11")
     assert resp.status_code == 422
     assert resp.json()["error"] == "invalid_input"
 

@@ -11,7 +11,7 @@ import pytest
 import openpyxl
 
 from backend import attendance_service, config, database, report_service, session_manager
-from backend.errors import ReportEmptyError, SessionNotFoundError
+from backend.errors import InvalidInputError, ReportEmptyError, SessionNotFoundError
 from backend.utils import now_tehran, to_iso, to_jalali_str
 
 
@@ -131,7 +131,7 @@ def test_export_daily_report_multiple_sessions(temp_db_and_reports):
     attendance_service.log_attendance(session2["id"], "100", source="face")
     session_manager.close_session(session2["id"])
     
-    date_iso = to_jalali_str(session1["started_at"]).replace('/', '-')
+    date_iso = session1["started_at"][:10]
     
     file_path = report_service.export_daily_report(date_iso)
     assert file_path.exists()
@@ -157,9 +157,23 @@ def test_export_daily_report_multiple_sessions(temp_db_and_reports):
 
 
 def test_export_daily_report_empty_raises_error(temp_db_and_reports):
-    date_iso = "1403-01-01" # Arbitrary past date
+    date_iso = "2020-01-01"  # Arbitrary past Gregorian date with no sessions
     with pytest.raises(ReportEmptyError):
         report_service.export_daily_report(date_iso)
+
+
+def test_export_daily_report_invalid_date_format(temp_db_and_reports):
+    # Malformed string
+    with pytest.raises(InvalidInputError):
+        report_service.export_daily_report("invalid-date")
+
+    # Calendar overflow
+    with pytest.raises(InvalidInputError):
+        report_service.export_daily_report("2026-02-30")
+
+    # Shamsi date rejected
+    with pytest.raises(InvalidInputError):
+        report_service.export_daily_report("1405-08-09")
 
 
 def test_export_session_report_empty_session(temp_db_and_reports):
