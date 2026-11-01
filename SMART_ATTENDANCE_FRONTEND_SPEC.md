@@ -24,8 +24,9 @@
   - Fields: Student ID (unique), Full Name, Major, Term
   - File upload: 3-5 images (drag & drop or browse)
   - Submit buttons:
-    - "Save Student Meta" → `POST /api/students`
-    - "Process Images" → `POST /api/students/{id}/enroll`
+    - "Save Student Meta" → `POST /students`
+    - "Process Images" → `POST /students/{id}/process-photos`
+  > *TODO: نیاز به تصمیم: در حال حاضر بک‌اند اندپوینت آپلود مستقیم تصویر دانشجو از طریق مرورگر را ندارد و عکس‌ها باید از قبل در پوشه known_faces/<student_id> سرور قرار گیرند و سپس اندپوینت فوق برای پردازش فراخوانی شود.*
 - **Error/Success Toasts** for all operations
 
 ### 3. Courses Management Page
@@ -34,6 +35,7 @@
 - **Add Course Form**
   - Fields: Course Code (UNIQUE), Title, Teacher
 - **Assign Students to Course** (if needed)
+  > *TODO: نیاز به تصمیم: در حال حاضر بک‌اند فقط اندپوینت GET /courses را دارد و افزودن درس (POST /courses) پیاده‌سازی نشده است.*
 
 ### 4. Sessions Page
 - **Active Session Indicator** (shows if session is running)
@@ -41,12 +43,12 @@
   - Columns: Session ID, Course, Start Time, Status, Duration, Actions
 - **Start New Session**
   - Select course from dropdown
-  - Set late threshold (minutes, default 10)
+  - Set late threshold (minutes, default 10, field: `late_after_minutes`)
   - Optional note
-  - Button: "Start Session" → `POST /api/sessions/start`
+  - Button: "Start Session" → `POST /sessions/start`
 - **Close Session**
   - Show active sessions
-  - Button: "Close Session"
+  - Button: "Close Session" → `POST /sessions/close` (body: `{"session_id": id}`)
 
 ### 5. Attendance Page (Main Interface)
 - **Camera Preview Area**
@@ -58,7 +60,7 @@
   - Buttons: "Mark Present", "Mark Late", "Skip"
 - **Manual Attendance Panel**
   - Student ID input
-  - Status selector: Present / Late / Absent
+  - Status selector: Present (via `PUT /sessions/{id}/attendance/{student_id}`), or Delete attendance (via `DELETE /sessions/{id}/attendance/{student_id}`)
   - Button: "Mark Attendance"
 - **Session Timer**
   - Countdown from session start
@@ -100,7 +102,7 @@ const API_BASE = 'http://127.0.0.1:8000';
 
 ### 1. Students Endpoints
 
-**POST /api/students**
+**POST /students**
 ```javascript
 // Request
 {
@@ -117,35 +119,39 @@ const API_BASE = 'http://127.0.0.1:8000';
   "full_name": "Ali Rezaei",
   "major": "Computer Science",
   "term": "90",
-  "embedding_file": "embeddings/S12345.npy",
+  "embedding_path": "embeddings/S12345.npy",
+  "has_embedding": true,
+  "photo_count": 0,
   "created_at": "2026-10-24T15:30:00"
 }
 ```
 
-**POST /api/students/{id}/enroll**
+**POST /students/{id}/process-photos**
 ```javascript
 // Request
 {
-  "image_folder_path": "C:/known_faces/S12345/"  // path on server
+  // Request: Empty body {} (reads photos from server's known_faces/{student_id}/)
 }
 
 // Success Response
 {
-  "success": true,
-  "message": "Embedding rebuilt successfully",
-  "rebuilt": 5,
-  "failed": 0
+  "accepted": 4,
+  "rejected": [],
+  "warnings": [],
+  "embedding_saved": true
 }
 ```
 
+> *TODO: نیاز به تصمیم: در حال حاضر بک‌اند اندپوینت آپلود مستقیم فایل عکس از طریق مرورگر ندارد و عکس‌ها باید از قبل در پوشه known_faces سرور قرار گیرند.*
+
 ### 2. Courses Endpoints
 
-**GET /api/courses**
+**GET /courses**
 ```javascript
 // Response: [{id, course_code, title, teacher, created_at}, ...]
 ```
 
-**POST /api/courses**
+**POST /courses**
 ```javascript
 // Request
 {
@@ -155,129 +161,153 @@ const API_BASE = 'http://127.0.0.1:8000';
 }
 ```
 
+> *TODO: نیاز به تصمیم: اندپوینت POST /courses در بک‌اند فعلی پیاده‌سازی نشده و تعریف دروس از طریق دیتابیس/اسکریپت انجام می‌شود.*
+
 ### 3. Sessions Endpoints
 
-**POST /api/sessions/start**
+**POST /sessions/start**
 ```javascript
 // Request
 {
   "course_id": 1,               // required
-  "late_threshold_minutes": 10, // optional, default 10
+  "late_after_minutes": 10 // optional, default 10
   "note": ""                    // optional
 }
 
 // Response
 {
-  "session_id": "session_20261024153000",
+  "id": 1,
   "course_id": 1,
-  "start_time": "2026-10-24T15:30:00",
-  "status": "active",
-  "late_threshold_minutes": 10,
-  "note": "",
-  "created_at": "2026-10-24T15:30:00"
+  "started_at": "2026-10-24T15:30:00",
+  "ended_at": null,
+  "late_after_minutes": 10,
+  "status": "active"
 }
 ```
 
-**POST /api/sessions/{id}/close**
+**POST /sessions/close**
 ```javascript
-// Request: none (just URL parameter)
+// Request: Body is optional; empty {} closes the active session
+{
+  "session_id": 1  // optional: ID of session to close
+}
+
 // Response
 {
-  "success": true,
-  "message": "Session closed"
+  "id": 1,
+  "course_id": 1,
+  "started_at": "2026-10-24T15:30:00",
+  "ended_at": "2026-10-24T17:00:00",
+  "late_after_minutes": 10,
+  "status": "closed"
 }
 ```
 
-**GET /api/sessions/active**
+**GET /sessions/active**
 ```javascript
 // Response
 {
-  "session_id": "session_20261024153000",
+  "id": 1,
   "course_id": 1,
-  "start_time": "2026-10-24T15:30:00",
-  "status": "active",
-  "late_threshold_minutes": 10
+  "started_at": "2026-10-24T15:30:00",
+  "ended_at": null,
+  "late_after_minutes": 10,
+  "status": "active"
 }
 ```
 
 ### 4. Attendance Endpoints
 
-**POST /api/attendance/recognize**
+**POST /sessions/{id}/recognize**
 ```javascript
-// Request
-{
-  "recognized_list": [
-    {"student_id": "S12345", "full_name": "Ali Rezaei", "confidence": 0.92}
-  ],
-  "camera_source": "laptop"   // "laptop" | "phone" | "manual"
-}
+// Request: multipart/form-data
+// Body field 'file': Image file (JPEG/PNG, max 10MB)
 
-// Success Response (for each recognition)
+// Success Response
 {
-  "results": [
+  "recorded": [
     {
       "student_id": "S12345",
-      "full_name": "Ali Rezaei",
-      "status": "present",     // "present" | "late" | "absent"
-      "check_in_time": "2026-10-24T15:35:00",
-      "confidence": 0.92,
-      "message": "حضور حاضر ثبت شد"
+      "status": "present",     // "present" | "late"
+      "registered_at": "2026-10-24T15:35:00",
+      "source": "face"
     }
   ],
-  "message": "Processing complete"
+  "already_present": [],
+  "pending": {},
+  "unknown_count": 0,
+  "faces": [
+    {
+      "box": [100, 250, 220, 130],
+      "student_id": "S12345",
+      "distance": 0.38,
+      "name": "Ali Rezaei"
+    }
+  ]
 }
 ```
 
-**POST /api/attendance/manual**
+**PUT /sessions/{id}/attendance/{student_id}** (ثبت دستی حضور)
 ```javascript
-// Request
+// Request: Query param ?source=manual (optional)
+// Success Response
 {
+  "id": 1,
+  "session_id": 1,
   "student_id": "S12345",
-  "status": "present"    // "present" | "late" | "absent"
+  "status": "present",
+  "registered_at": "2026-10-24T15:35:00",
+  "source": "manual"
 }
+// Note: If student is already present, response includes "reason": "already_present"
+```
 
-// Response (same structure as recognize success)
+**DELETE /sessions/{id}/attendance/{student_id}** (حذف رکورد حضور)
+```javascript
+// Response
+{
+  "deleted": true,
+  "session_id": 1,
+  "student_id": "S12345"
+}
+```
+
+**GET /sessions/{id}/attendance** (مشاهده وضعیت حضور و غیاب جلسه)
+```javascript
+// Response
+{
+  "session_id": 1,
+  "attendance": [
+    {
+      "student_id": "S12345",
+      "full_name": "Ali Rezaei",
+      "status": "present",
+      "registered_at": "2026-10-24T15:35:00",
+      "source": "face"
+    }
+  ],
+  "summary": {
+    "total_students": 45,
+    "present_count": 38,
+    "late_count": 5,
+    "absent_count": 2
+  }
+}
 ```
 
 ### 5. Reports Endpoints
 
-**GET /api/reports/session/{id}/excel**
-```javascript
-// Response
-{
-  "success": true,
-  "file_path": "/attendance_system/reports/raport_session_20261024_1403_07_01.xlsx",
-  "filename": "raport_session_20261024_1403_07_01.xlsx",
-  "summary": {
-    "session_id": "session_20261024153000",
-    "course_title": "Introduction to AI",
-    "date_jalali": "1403/07/01",
-    "date_gregorian": "2026/10/24",
-    "total_students": 45,
-    "present_count": 38,
-    "late_count": 5,
-    "absent_count": 2,
-    "records": [  // array of student records
-      {
-        "student_id": "S12345",
-        "full_name": "Ali Rezaei",
-        "major": "Computer Science",
-        "term": "90",
-        "status": "present",
-        "check_in_time": "15:35:00",
-        "confidence": 0.92
-      }
-    ]
-  },
-  "message": "Excel generated successfully"
-}
-```
-- **Action**: Download the file from `file_path` or use `filename` with base URL
+**GET /sessions/{id}/report**
+- **Action**: دانلود مستقیم فایل اکسل باینری (`.xlsx`)
+- **Content-Type**: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- **Content-Disposition**: `attachment; filename="raport_session_<id>_<date>.xlsx"`
 - **Technology**: openpyxl + jdatetime on backend
 
-**GET /api/reports/daily**
+**GET /reports/daily?date=YYYY-MM-DD**
+- **Action**: دانلود مستقیم فایل اکسل تجمیعی روزانه (`.xlsx`) شامل تمامی جلسات روز
+- پارامتر `date` اختیاری است (پیش‌فرض: امروز)
 ```javascript
-// Response: similar structure to session report but for all today's sessions
+// دانلود مستقیم فایل باینری .xlsx
 ```
 
 ---
@@ -314,22 +344,23 @@ async function analyzeFrame() {
   // Convert to dataURL or blob
   const dataURL = canvas.toDataURL('image/jpeg', 0.8);
   
-  // Send to backend
-  const response = await fetch(`${API_BASE}/api/attendance/recognize`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      recognized_list: [],  // Will be populated by backend processing
-      camera_source: 'laptop'
-    })
-  });
-  
-  const result = await response.json();
-  displayResults(result.results);
+  // Convert canvas to blob and send to backend
+  canvas.toBlob(async (blob) => {
+    const formData = new FormData();
+    formData.append('file', blob, 'frame.jpg');
+
+    const response = await fetch(`${API_BASE}/sessions/${sessionId}/recognize`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+    displayResults(result);
+  }, 'image/jpeg', 0.8);
 }
 ```
 
-**Note**: The backend `face_engine.py` handles the actual face detection/recognition. The frontend just sends the recognition results (student_id, full_name, confidence) that were obtained from client-side or separate server-side face detection.
+**Note**: The backend handles the face detection, recognition, streak tracking, and auto-registration directly from the uploaded frame (multipart/form-data, max 10MB).
 
 ### Alternative: Client-side Face Detection
 If you want to do face detection in the browser:
@@ -357,7 +388,7 @@ export const AttendanceProvider = ({ children }) => {
   
   // Load active session on mount
   useEffect(() => {
-    fetch(`${API_BASE}/api/sessions/active`)
+    fetch(`${API_BASE}/sessions/active`)
       .then(res => res.json())
       .then(setSession)
       .catch(console.error);
@@ -365,7 +396,7 @@ export const AttendanceProvider = ({ children }) => {
   
   // Load students list
   useEffect(() => {
-    fetch(`${API_BASE}/api/students`)
+    fetch(`${API_BASE}/students`)
       .then(res => res.json())
       .then(setStudents)
       .catch(console.error);
@@ -418,13 +449,15 @@ export const useAttendance = () => useContext(AttendanceContext);
 ```javascript
 // Expected error format from backend
 {
-  "detail": "Error message in English or Persian"
+  "error": "error_code",        // e.g. "not_found", "conflict", "payload_too_large"
+  "message": "پیام خطای فارسی"
 }
 
 // Common error cases
-// 400 - Bad request (invalid input)
 // 404 - Not found (session/student not found)
-// 409 - Conflict (already registered in session)
+// 409 - Conflict (e.g. active session already exists)
+// 413 - Payload Too Large (file > 10MB)
+// 422 - Unprocessable Entity (validation error / empty or invalid file)
 // 500 - Server error
 ```
 
@@ -434,7 +467,7 @@ try {
   const response = await fetch(url, options);
   if (!response.ok) {
     const errorData = await response.json();
-    showToast(errorData.detail || 'An error occurred', 'error');
+    showToast(errorData.message || 'خطایی رخ داد', 'error');
     throw errorData;
   }
   const data = await response.json();
@@ -459,25 +492,21 @@ try {
 ```jsx
 <StudentAddForm
   onSave={async (data) => {
-    // Call POST /api/students
-    const result = await fetch(`${API_BASE}/api/students`, {
+    // Call POST /students
+    const result = await fetch(`${API_BASE}/students`, {
       method: 'POST',
       body: JSON.stringify(data),
       headers: {'Content-Type': 'application/json'}
     });
     const json = await result.json();
     if (result.ok) showToast('Student registered', 'success');
-    else showToast(json.detail || 'Failed', 'error');
+    else showToast(json.message || 'Failed', 'error');
   }}
-  onEnroll={async (studentId, files) => {
-    // Call POST /api/students/{id}/enroll
-    const formData = new FormData();
-    files.forEach(f => formData.append('images', f));
-    formData.append('student_id', studentId);
-    
-    const result = await fetch(`${API_BASE}/api/students/${studentId}/enroll`, {
-      method: 'POST',
-      body: formData
+  onEnroll={async (studentId) => {
+    // Call POST /students/{id}/process-photos
+    // TODO: نیاز به تصمیم: آپلود مستقیم از طریق مرورگر پیاده‌سازی نشده؛ عکس‌ها باید در known_faces سرور باشند.
+    const result = await fetch(`${API_BASE}/students/${studentId}/process-photos`, {
+      method: 'POST'
     });
     // handle response
   }}
@@ -488,7 +517,8 @@ try {
 ```jsx
 <CourseAddForm
   onSubmit={async (data) => {
-    const result = await fetch(`${API_BASE}/api/courses`, {
+    // TODO: نیاز به تصمیم: اندپوینت POST /courses در بک‌اند فعلی پیاده‌سازی نشده است.
+    const result = await fetch(`${API_BASE}/courses`, {
       method: 'POST',
       body: JSON.stringify(data),
       headers: {'Content-Type': 'application/json'}
@@ -502,13 +532,13 @@ try {
 ```jsx
 <SessionStartForm
   onSubmit={async (data) => {
-    // data: {course_id, late_threshold_minutes, note}
-    const result = await fetch(`${API_BASE}/api/sessions/start`, {
+    // data: {course_id, late_after_minutes}
+    const result = await fetch(`${API_BASE}/sessions/start`, {
       method: 'POST',
       body: JSON.stringify(data),
       headers: {'Content-Type': 'application/json'}
     });
-    // handle response, show session_id, start timer
+    // handle response, show id, start timer
   }}
 />
 ```
@@ -517,11 +547,9 @@ try {
 ```jsx
 <ManualAttendanceForm
   onSubmit={async (data) => {
-    // data: {student_id, status}
-    const result = await fetch(`${API_BASE}/api/attendance/manual`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-      headers: {'Content-Type': 'application/json'}
+    // PUT /sessions/{sessionId}/attendance/{student_id}
+    const result = await fetch(`${API_BASE}/sessions/${sessionId}/attendance/${data.student_id}`, {
+      method: 'PUT'
     });
     // handle response, update UI
   }}
@@ -533,18 +561,20 @@ try {
 <ExcelExportButton
   sessionId={currentSession.id}
   onDownload={async () => {
-    const result = await fetch(`${API_BASE}/api/reports/session/${currentSession.id}/excel`);
-    const data = await result.json();
-    
-    if (data.success) {
-      // Trigger download
+    // GET /sessions/{id}/report returns binary .xlsx stream directly
+    const response = await fetch(`${API_BASE}/sessions/${currentSession.id}/report`);
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = `${API_BASE}${data.file_path}`;
-      a.download = data.filename;
+      a.href = url;
+      a.download = `raport_session_${currentSession.id}.xlsx`;
       a.click();
-      showToast('Report downloaded', 'success');
+      window.URL.revokeObjectURL(url);
+      showToast('گزارش با موفقیت دانلود شد', 'success');
     } else {
-      showToast(data.detail || 'Failed', 'error');
+      const err = await response.json().catch(() => ({}));
+      showToast(err.message || 'خطا در دریافت گزارش', 'error');
     }
   }}
 />
@@ -559,8 +589,8 @@ try {
 1. **User opens Students page**
 2. **Fills form**: Student ID: `S99999`, Name: `محمد احمدی`, Major: `Information Technology`, Term: `91`
 3. **Uploads 3 images** (drags 3 jpg files or clicks browse)
-4. **Clicks "Save Student Meta"** → `POST /api/students` → success → shows student in list
-5. **Clicks "Process Images"** → `POST /api/students/S99999/enroll` → processes 3 images → saves embedding → shows success
+4. **Clicks "Save Student Meta"** → `POST /students` → success → shows student in list
+5. **Clicks "Process Images"** → `POST /students/S99999/process-photos` → processes images → saves embedding → shows success
 6. **Student now appears in dropdowns** for course assignments
 
 ### Complete User Journey: Attendance Taking
@@ -570,10 +600,10 @@ try {
 3. **Video stream starts** - faces detected in real-time
 4. **System recognizes faces** - shows list with confidence scores
 5. **User clicks "Mark Present"** for each recognized student
-6. **System auto-saves** to database via `POST /api/attendance/recognize`
+6. **System auto-saves** to database via `POST /sessions/{id}/recognize`
 7. **Timer shows** elapsed time vs late threshold
-8. **After session**: User clicks "Close Session"
-9. **User generates report**: `GET /api/reports/session/{id}/excel`
+8. **After session**: User clicks "Close Session" → `POST /sessions/close`
+9. **User generates report**: `GET /sessions/{id}/report`
 10. **Downloads Excel file** with all attendance data + Jalali date
 
 ### Complete User Journey: Course Management
@@ -581,7 +611,7 @@ try {
 1. **User opens Courses page**
 2. **Clicks "Add Course"**
 3. **Fills form**: Course Code: `CS101`, Title: `Introduction to AI`, Teacher: `Dr. Smith`
-4. **Clicks "Create"** → `POST /api/courses` → success
+4. **Clicks "Create"** → `POST /courses` → success
 5. **Course appears in dropdowns** for session creation
 6. **User can now create sessions** for this course
 
