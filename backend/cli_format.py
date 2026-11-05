@@ -9,6 +9,18 @@ import sys
 from typing import Any, Sequence
 
 
+def sanitize_text(text: Any, placeholder: str = "(Persian)") -> str:
+    """Return placeholder if text contains non-ASCII characters, else ASCII text or '-'."""
+    if text is None:
+        return "-"
+    s = str(text).strip()
+    if not s:
+        return "-"
+    if any(ord(c) >= 128 for c in s):
+        return placeholder
+    return s
+
+
 def print_box(
     title: str,
     items: list[tuple[str, Any]],
@@ -16,6 +28,10 @@ def print_box(
     file=None,
 ) -> None:
     """Print an ASCII bordered box with key-value pairs aligned.
+
+    Supports section dividers when key is '---' or None:
+        - ('---', 'Section Title') creates an internal header '+-- Section Title ----+'
+        - ('---', '') creates a simple horizontal line '+----------------------+'
 
     Example:
         +-- Session started ----------------+
@@ -36,9 +52,14 @@ def print_box(
         print(bottom, file=out)
         return
 
-    max_k = max(len(str(k)) for k, _ in items)
-    max_v = max(len(str(v)) for _, v in items)
-    content_width = max(min_width - 4, len(title) + 4, max_k + max_v + 5)
+    kv_items = [(str(k), str(v)) for k, v in items if k != "---" and k is not None]
+    divider_titles = [str(v) for k, v in items if (k == "---" or k is None) and v]
+
+    max_k = max((len(k) for k, _ in kv_items), default=0)
+    max_v = max((len(v) for _, v in kv_items), default=0)
+    max_div = max((len(t) for t in divider_titles), default=0)
+
+    content_width = max(min_width - 4, len(title) + 4, max_k + max_v + 5, max_div + 4)
     total_width = content_width + 4
 
     dash_count = max(0, total_width - len(title) - 6)
@@ -47,9 +68,18 @@ def print_box(
 
     print(top, file=out)
     for k, v in items:
-        line_content = f"{str(k):<{max_k}} : {str(v)}"
-        padded = f"| {line_content:<{content_width}} |"
-        print(padded, file=out)
+        if k == "---" or k is None:
+            if v:
+                sec_dash = max(0, total_width - len(str(v)) - 6)
+                sec_line = f"+-- {v} " + ("-" * sec_dash) + "+"
+                print(sec_line, file=out)
+            else:
+                sep_line = "+" + ("-" * (total_width - 2)) + "+"
+                print(sep_line, file=out)
+        else:
+            line_content = f"{str(k):<{max_k}} : {str(v)}"
+            padded = f"| {line_content:<{content_width}} |"
+            print(padded, file=out)
     print(bottom, file=out)
 
 
@@ -88,4 +118,5 @@ def print_table(
         row_line = "| " + " | ".join(f"{str(cell):<{w}}" for cell, w in zip(padded_row, col_widths)) + " |"
         print(row_line, file=out)
     print(border, file=out)
+
 

@@ -235,7 +235,7 @@ def run_live_loop(
                 )
                 return 1
         except AppError as err:
-            print(f"Error checking session: {err.code} - {err.message_fa}", file=sys.stderr)
+            print(f"Error checking session: [{err.code}]", file=sys.stderr)
             return 1
         print(f"Recording mode active for session {session_id}. Press 'q' to exit.")
         window_title = f"Attendance System - Session {session_id} (Press Q to exit)"

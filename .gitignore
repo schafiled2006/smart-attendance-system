@@ -12,3 +12,5 @@ tests/data/
 .pytest_cache/
 .pytest_tmp/
 *_output.txt
+
+.vscode/

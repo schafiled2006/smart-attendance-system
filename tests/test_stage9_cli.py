@@ -53,13 +53,21 @@ def temp_environment(tmp_path, monkeypatch):
 # =========================================================================== #
 
 
+def assert_no_persian(text: str):
+    """Verify that text does not contain any Persian or non-ASCII characters."""
+    non_ascii = [c for c in text if ord(c) >= 128]
+    assert not non_ascii, f"Found non-ASCII characters in English output: {set(non_ascii)}"
+
+
 def test_manage_init_db(capsys):
     # Default en
     ret = manage.main(["init-db"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Database initialized" in captured.out
+    assert "+-- Database Initialized" in captured.out
     assert "Success" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
 
     # fa flag
     ret_fa = manage.main(["--lang", "fa", "init-db"])
@@ -67,18 +75,22 @@ def test_manage_init_db(capsys):
     captured_fa = capsys.readouterr()
     assert "+-- مقداردهی اولیه پایگاه داده" in captured_fa.out
     assert "موفقیت‌آمیز" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
 
 
 def test_manage_add_student_success_and_duplicate(capsys):
     # 1. Add student successfully (en)
-    ret = manage.main(["add-student", "--id", "S1001", "--name", "علی رضایی", "--major", "Computer Science", "--term", "4"])
+    ret = manage.main(["add-student", "--id", "S1001", "--name", "علی رضایی", "--major", "مهندسی کامپیوتر", "--term", "4"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Student registered" in captured.out
+    assert "+-- Student Registered" in captured.out
     assert "S1001" in captured.out
-    assert "Computer Science" in captured.out
+    assert "(Persian name)" in captured.out
+    assert "(Persian)" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
 
-    # Verify student exists in DB
+    # Verify student exists in DB with original Persian name
     student = enrollment.get_student("S1001")
     assert student is not None
     assert student["full_name"] == "علی رضایی"
@@ -89,12 +101,14 @@ def test_manage_add_student_success_and_duplicate(capsys):
     captured_fa = capsys.readouterr()
     assert "+-- ثبت دانشجو" in captured_fa.out
     assert "S1002" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
 
     # 3. Add same student again -> Duplicate error (en)
     ret_dup = manage.main(["add-student", "--id", "S1001", "--name", "علی رضایی"])
     assert ret_dup == 1
     captured_dup = capsys.readouterr()
     assert "Error [student_exists]" in captured_dup.err
+    assert_no_persian(captured_dup.err)
 
     # 4. Duplicate error (fa)
     ret_dup_fa = manage.main(["--lang", "fa", "add-student", "--id", "S1001", "--name", "علی رضایی"])
@@ -108,6 +122,7 @@ def test_manage_add_student_invalid_inputs(capsys):
     assert ret == 1
     captured = capsys.readouterr()
     assert "Error [invalid_input]" in captured.err
+    assert_no_persian(captured.err)
 
 
 def test_manage_delete_student(capsys):
@@ -119,10 +134,12 @@ def test_manage_delete_student(capsys):
     ret = manage.main(["delete-student", "--id", "S2001"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Student deleted" in captured.out
+    assert "+-- Student Deleted" in captured.out
     assert "S2001" in captured.out
     assert "Force" in captured.out
     assert "False" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
     assert enrollment.get_student("S2001") is None
 
     # 3. Delete nonexistent student
@@ -130,6 +147,7 @@ def test_manage_delete_student(capsys):
     assert ret_nonexistent == 1
     captured_nonexistent = capsys.readouterr()
     assert "Error [student_not_found]" in captured_nonexistent.err
+    assert_no_persian(captured_nonexistent.err)
 
     # 4. Delete student with attendance protection
     manage.main(["add-student", "--id", "S2002", "--name", "رضا راد"])
@@ -141,14 +159,16 @@ def test_manage_delete_student(capsys):
     assert ret_blocked == 1
     captured_blocked = capsys.readouterr()
     assert "Error [student_has_attendance]" in captured_blocked.err
+    assert_no_persian(captured_blocked.err)
 
     # Delete with --force -> Success
     ret_force = manage.main(["delete-student", "--id", "S2002", "--force"])
     assert ret_force == 0
     captured_force = capsys.readouterr()
-    assert "+-- Student deleted" in captured_force.out
+    assert "+-- Student Deleted" in captured_force.out
     assert "Force" in captured_force.out
     assert "True" in captured_force.out
+    assert_no_persian(captured_force.out)
     assert enrollment.get_student("S2002") is None
 
 
@@ -157,6 +177,7 @@ def test_manage_process_photos_not_found(capsys):
     assert ret == 1
     captured = capsys.readouterr()
     assert "Error [student_not_found]" in captured.err
+    assert_no_persian(captured.err)
 
 
 def test_manage_process_photos_mocked_success(monkeypatch, capsys):
@@ -174,13 +195,15 @@ def test_manage_process_photos_mocked_success(monkeypatch, capsys):
     ret = manage.main(["process-photos", "--id", "S3001"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Photos processed" in captured.out
+    assert "+-- Photos Processed" in captured.out
     assert "Accepted" in captured.out
     assert "4" in captured.out
     assert "Rejected" in captured.out
     assert "1" in captured.out
     assert "Embedding" in captured.out
     assert "Saved" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
 
     # fa
     ret_fa = manage.main(["--lang", "fa", "process-photos", "--id", "S3001"])
@@ -189,6 +212,7 @@ def test_manage_process_photos_mocked_success(monkeypatch, capsys):
     assert "+-- پردازش تصاویر" in captured_fa.out
     assert "پذیرفته‌شده" in captured_fa.out
     assert "4" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
 
 
 def test_manage_list_students_empty_and_populated(capsys):
@@ -197,38 +221,113 @@ def test_manage_list_students_empty_and_populated(capsys):
     assert ret == 0
     captured = capsys.readouterr()
     assert "No students found in the database." in captured.out
+    assert_no_persian(captured.out)
 
     # 2. Empty (fa)
     ret_empty_fa = manage.main(["--lang", "fa", "list-students"])
     assert ret_empty_fa == 0
     captured_empty_fa = capsys.readouterr()
     assert "هیچ دانشجویی در سیستم ثبت نشده است." in captured_empty_fa.out
+    assert "Warning: Windows PowerShell console" in captured_empty_fa.err
 
-    # 3. Populated (en default - no names in table)
-    enrollment.add_student("S4001", "سارا احمدی", "Computer Science", "3")
+    # 3. Populated (en default - individual student cards)
+    enrollment.add_student("S4001", "سارا احمدی", "مهندسی برق", "3")
     ret_pop = manage.main(["list-students"])
     assert ret_pop == 0
     captured_pop = capsys.readouterr()
-    assert "+------------+------------------+------+--------+-----------+" in captured_pop.out
-    assert "Student ID" in captured_pop.out
-    assert "S4001" in captured_pop.out
-    assert "Computer Science" in captured_pop.out
-    assert "سارا احمدی" not in captured_pop.out  # Persian name excluded from table in en mode
+    assert "+-- Student 1 of 1" in captured_pop.out
+    assert "Student ID : S4001" in captured_pop.out
+    assert "Term       : 3" in captured_pop.out
+    assert "Photos     : 0" in captured_pop.out
+    assert "Embedding  : No" in captured_pop.out
+    assert "Total students: 1 | With embedding: 0 | Without: 1" in captured_pop.out
+    assert_no_persian(captured_pop.out)
 
-    # 4. Populated with --show-names (en)
+    # 4. Populated with --compact (en table)
+    ret_compact = manage.main(["list-students", "--compact"])
+    assert ret_compact == 0
+    captured_compact = capsys.readouterr()
+    assert "+------------+" in captured_compact.out
+    assert "Student ID" in captured_compact.out
+    assert "S4001" in captured_compact.out
+    assert "(Persian)" in captured_compact.out  # Persian major replaced by ASCII placeholder
+    assert "Total students: 1" in captured_compact.out
+    assert_no_persian(captured_compact.out)
+
+    # 5. Populated with --show-names (en)
     ret_names = manage.main(["list-students", "--show-names"])
     assert ret_names == 0
     captured_names = capsys.readouterr()
     assert "Names (Persian):" in captured_names.out
     assert "S4001:" in captured_names.out
 
-    # 5. Populated (fa)
+    # 6. Populated (fa)
     ret_fa = manage.main(["--lang", "fa", "list-students"])
     assert ret_fa == 0
     captured_fa = capsys.readouterr()
-    assert "شناسه" in captured_fa.out
-    assert "رشته" in captured_fa.out
-    assert "اسامی دانشجویان:" in captured_fa.out
+    assert "+-- دانشجو 1 از 1" in captured_fa.out
+    assert "مجموع دانشجویان: 1" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
+
+
+def test_manage_status(capsys):
+    enrollment.add_student("S8001", "نوید محمدی")
+    session = session_manager.start_session(course_id=1, late_after_minutes=15)
+
+    # 1. English status
+    ret = manage.main(["status"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "+-- System Status" in captured.out
+    assert "Total students" in captured.out
+    assert "1" in captured.out
+    assert f"Session #{session['id']}" in captured.out
+    assert "Excel reports" in captured.out
+    assert_no_persian(captured.out)
+
+    # 2. Persian status
+    ret_fa = manage.main(["--lang", "fa", "status"])
+    assert ret_fa == 0
+    captured_fa = capsys.readouterr()
+    assert "+-- وضعیت سامانه" in captured_fa.out
+    assert "کل دانشجویان" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
+
+
+def test_manage_session_summary(capsys):
+    session = session_manager.start_session(course_id=1, late_after_minutes=10)
+    sid = session["id"]
+    enrollment.add_student("S9001", "امید شریفی")
+    attendance_service.log_attendance(sid, "S9001", source="face", confidence=0.32)
+
+    # 1. English summary
+    ret = manage.main(["session-summary", "--id", str(sid)])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert f"+-- Session #{sid} Summary" in captured.out
+    assert "Attendance Stats" in captured.out
+    assert "Present" in captured.out
+    assert "Late" in captured.out
+    assert "Absent" in captured.out
+    assert "Student Records" in captured.out
+    assert "S9001" in captured.out
+    assert "present (face)" in captured.out
+    assert_no_persian(captured.out)
+
+    # 2. Nonexistent session
+    ret_non = manage.main(["session-summary", "--id", "99999"])
+    assert ret_non == 1
+    captured_non = capsys.readouterr()
+    assert "Error [session_not_found]" in captured_non.err
+    assert_no_persian(captured_non.err)
+
+    # 3. Persian summary
+    ret_fa = manage.main(["--lang", "fa", "session-summary", "--id", str(sid)])
+    assert ret_fa == 0
+    captured_fa = capsys.readouterr()
+    assert f"+-- خلاصه جلسه شماره {sid}" in captured_fa.out
+    assert "آمار حضور و غیاب" in captured_fa.out
+    assert "Warning: Windows PowerShell console" in captured_fa.err
 
 
 def test_manage_start_and_close_session(capsys):
@@ -236,31 +335,39 @@ def test_manage_start_and_close_session(capsys):
     ret_start = manage.main(["start-session", "--course-id", "1", "--late-after", "12"])
     assert ret_start == 0
     captured_start = capsys.readouterr()
-    assert "+-- Session started" in captured_start.out
+    assert "+-- Session Started" in captured_start.out
+    assert "Status" in captured_start.out
+    assert "Active" in captured_start.out
     assert "Course ID" in captured_start.out
     assert "1" in captured_start.out
     assert "Late after" in captured_start.out
     assert "12 min" in captured_start.out
+    assert "Next step" in captured_start.out
+    assert_no_persian(captured_start.out)
 
     # 2. Try to start second active session
     ret_second = manage.main(["start-session", "--course-id", "1"])
     assert ret_second == 1
     captured_second = capsys.readouterr()
     assert "Error [session_already_active]" in captured_second.err
+    assert_no_persian(captured_second.err)
 
     # 3. Close active session
     ret_close = manage.main(["close-session"])
     assert ret_close == 0
     captured_close = capsys.readouterr()
-    assert "+-- Session closed" in captured_close.out
+    assert "+-- Session Closed" in captured_close.out
     assert "Status" in captured_close.out
-    assert "closed" in captured_close.out
+    assert "Closed" in captured_close.out
+    assert "Next step" in captured_close.out
+    assert_no_persian(captured_close.out)
 
     # 4. Close when no active session
     ret_no_active = manage.main(["close-session"])
     assert ret_no_active == 1
     captured_no_active = capsys.readouterr()
     assert "Error [no_active_session]" in captured_no_active.err
+    assert_no_persian(captured_no_active.err)
 
 
 def test_manage_close_session_by_id(capsys):
@@ -270,9 +377,10 @@ def test_manage_close_session_by_id(capsys):
     ret = manage.main(["close-session", "--id", str(sid)])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Session closed" in captured.out
+    assert "+-- Session Closed" in captured.out
     assert "Session ID" in captured.out
     assert str(sid) in captured.out
+    assert_no_persian(captured.out)
 
 
 def test_manage_report_session_report(capsys):
@@ -283,10 +391,12 @@ def test_manage_report_session_report(capsys):
     ret = manage.main(["report", "--session-id", str(session["id"])])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Session report exported" in captured.out
+    assert "+-- Session Report Exported" in captured.out
     assert "Session ID" in captured.out
     assert str(session["id"]) in captured.out
     assert ".xlsx" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
 
 
 def test_manage_report_session_report_not_found(capsys):
@@ -294,6 +404,7 @@ def test_manage_report_session_report_not_found(capsys):
     assert ret == 1
     captured = capsys.readouterr()
     assert "Error [session_not_found]" in captured.err
+    assert_no_persian(captured.err)
 
 
 def test_manage_report_daily_success_and_shamsi_conversion(capsys):
@@ -308,14 +419,17 @@ def test_manage_report_daily_success_and_shamsi_conversion(capsys):
     ret = manage.main(["report", "--daily", "--date", shamsi_str])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "+-- Daily report exported" in captured.out
+    assert "+-- Daily Report Exported" in captured.out
     assert ".xlsx" in captured.out
+    assert "Next step" in captured.out
+    assert_no_persian(captured.out)
 
     # 2. Without --date (defaults to today)
     ret_def = manage.main(["report", "--daily"])
     assert ret_def == 0
     captured_def = capsys.readouterr()
-    assert "+-- Daily report exported" in captured_def.out
+    assert "+-- Daily Report Exported" in captured_def.out
+    assert_no_persian(captured_def.out)
 
 
 def test_manage_report_daily_invalid_dates(capsys):
@@ -324,12 +438,14 @@ def test_manage_report_daily_invalid_dates(capsys):
     assert ret1 == 1
     captured1 = capsys.readouterr()
     assert "Error [invalid_input]" in captured1.err
+    assert_no_persian(captured1.err)
 
     # Invalid calendar value (month 15)
     ret2 = manage.main(["report", "--daily", "--date", "1403-15-40"])
     assert ret2 == 1
     captured2 = capsys.readouterr()
     assert "Error [invalid_input]" in captured2.err
+    assert_no_persian(captured2.err)
 
 
 def test_manage_report_daily_empty(capsys):
@@ -337,6 +453,7 @@ def test_manage_report_daily_empty(capsys):
     assert ret == 1
     captured = capsys.readouterr()
     assert "Error [report_empty]" in captured.err
+    assert_no_persian(captured.err)
 
 
 def test_manage_report_mutually_exclusive_args(capsys):
@@ -360,6 +477,29 @@ def test_manage_run_mocked(monkeypatch):
         workers=1,
         reload=False,
     )
+
+
+def test_no_persian_in_en_mode_all_commands(capsys):
+    """Strictly assert that no English command emits non-ASCII / Persian characters."""
+    cmds = [
+        ["init-db"],
+        ["add-student", "--id", "P901", "--name", "سید علی موسوی", "--major", "مهندسی مکانیک", "--term", "5"],
+        ["list-students"],
+        ["list-students", "--compact"],
+        ["status"],
+        ["start-session", "--course-id", "1", "--late-after", "10"],
+        ["session-summary", "--id", "1"],
+        ["close-session"],
+        ["report", "--session-id", "1"],
+        ["report", "--daily"],
+        ["delete-student", "--id", "P901"],
+    ]
+    for cmd in cmds:
+        ret = manage.main(cmd)
+        assert ret == 0, f"Command {cmd} failed with exit code {ret}"
+        captured = capsys.readouterr()
+        assert_no_persian(captured.out)
+        assert_no_persian(captured.err)
 
 
 # =========================================================================== #

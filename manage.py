@@ -5,7 +5,7 @@ managing students, processing photos, controlling sessions, generating reports,
 and running the API server.
 
 Supports clean ASCII box/table formatting, UTF-8 output on Windows PowerShell 5.1,
-and an explicit --lang flag ('en' by default, or 'fa').
+zero Persian text in default English mode, and an explicit --lang flag ('en' by default, or 'fa').
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from typing import Any
 
 import jdatetime
 
-from backend import config, database, enrollment, report_service, session_manager
-from backend.cli_format import print_box, print_table
+from backend import attendance_service, config, database, enrollment, report_service, session_manager
+from backend.cli_format import print_box, print_table, sanitize_text
 from backend.errors import (
     AppError,
     InvalidInputError,
@@ -62,7 +62,7 @@ def _format_error(err: AppError, lang: str = "en") -> str:
     if lang == "fa":
         return f"خطا [{err.code}]: {err.message_fa}"
 
-    msg = ERROR_MESSAGES_EN.get(err.code, str(err))
+    msg = ERROR_MESSAGES_EN.get(err.code, f"An error occurred ({err.code}).")
     return f"Error [{err.code}]: {msg}"
 
 
@@ -116,9 +116,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # 5. list-students
     p_list = subparsers.add_parser("list-students", help="List all registered students")
     p_list.add_argument(
+        "--compact",
+        action="store_true",
+        help="Display compact table instead of individual cards",
+    )
+    p_list.add_argument(
         "--show-names",
         action="store_true",
-        help="Print Persian full names in a separate section below the ASCII table",
+        help="Print Persian full names in a separate section below the output",
     )
 
     # 6. start-session
@@ -140,7 +145,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Session ID to close (defaults to currently active session)",
     )
 
-    # 8. report
+    # 8. session-summary
+    p_sum = subparsers.add_parser("session-summary", help="Display attendance summary for a specific session")
+    p_sum.add_argument("--id", type=int, required=True, help="Session ID to inspect")
+
+    # 9. status
+    subparsers.add_parser("status", help="Display overall system summary and statistics")
+
+    # 10. report
     p_report = subparsers.add_parser("report", help="Export Excel attendance report")
     r_group = p_report.add_mutually_exclusive_group(required=True)
     r_group.add_argument("--session-id", type=int, help="Single session ID to export")
@@ -155,7 +167,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Shamsi date for daily report (format: 1403-08-11 or 1403/08/11; default: today)",
     )
 
-    # 9. run
+    # 11. run
     p_run = subparsers.add_parser("run", help="Run FastAPI server via uvicorn")
     p_run.add_argument("--host", default=None, help="Server host (default: 127.0.0.1)")
     p_run.add_argument("--port", type=int, default=None, help="Server port (default: 8000)")
@@ -170,15 +182,21 @@ def _handle_init_db(lang: str) -> int:
             "مقداردهی اولیه پایگاه داده",
             [
                 ("وضعیت", "موفقیت‌آمیز"),
+                ("---", "جزئیات"),
                 ("درس پیش‌فرض", "درس شماره ۱ ایجاد شد"),
+                ("---", "گام بعدی"),
+                ("گام بعدی", "ثبت دانشجو با 'manage.py add-student --id <id> --name <name>'"),
             ],
         )
     else:
         print_box(
-            "Database initialized",
+            "Database Initialized",
             [
                 ("Status", "Success"),
+                ("---", "Details"),
                 ("Default item", "Course #1 ready"),
+                ("---", "Next Step"),
+                ("Next step", "Register students with 'manage.py add-student --id <id> --name <name>'"),
             ],
         )
     return 0
@@ -196,20 +214,28 @@ def _handle_add_student(args: argparse.Namespace) -> int:
             print_box(
                 "ثبت دانشجو",
                 [
+                    ("وضعیت", "موفقیت‌آمیز"),
+                    ("---", "جزئیات"),
                     ("شماره دانشجویی", student["student_id"]),
-                    ("نام و نام خانوادگی", student["full_name"]),
+                    ("نام و نام خانوادگی", _format_bidi_name(student["full_name"])),
                     ("رشته", student["major"] or "-"),
                     ("ترم", student["term"] or "-"),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", f"قرار دادن ۳ تا ۵ تصویر در known_faces/{student['student_id']}/ و سپس اجرای process-photos"),
                 ],
             )
         else:
             print_box(
-                "Student registered",
+                "Student Registered",
                 [
+                    ("Status", "Success"),
+                    ("---", "Details"),
                     ("Student ID", student["student_id"]),
-                    ("Full Name", student["full_name"]),
-                    ("Major", student["major"] or "-"),
-                    ("Term", student["term"] or "-"),
+                    ("Full Name", sanitize_text(student["full_name"], "(Persian name)")),
+                    ("Major", sanitize_text(student["major"], "(Persian)")),
+                    ("Term", sanitize_text(student["term"], "-")),
+                    ("---", "Next Step"),
+                    ("Next step", f"Put 3-5 photos in known_faces/{student['student_id']}/ then run process-photos"),
                 ],
             )
         return 0
@@ -225,18 +251,24 @@ def _handle_delete_student(args: argparse.Namespace) -> int:
             print_box(
                 "حذف دانشجو",
                 [
+                    ("وضعیت", "با موفقیت حذف شد"),
+                    ("---", "جزئیات"),
                     ("شماره دانشجویی", args.id),
                     ("اجباری (Force)", "بله" if args.force else "خیر"),
-                    ("وضعیت", "با موفقیت حذف شد"),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", "بررسی دانشجویان باقی‌مانده با 'manage.py list-students'"),
                 ],
             )
         else:
             print_box(
-                "Student deleted",
+                "Student Deleted",
                 [
+                    ("Status", "Successfully removed"),
+                    ("---", "Details"),
                     ("Student ID", args.id),
                     ("Force", str(args.force)),
-                    ("Status", "Successfully removed"),
+                    ("---", "Next Step"),
+                    ("Next step", "Check remaining students with 'manage.py list-students'"),
                 ],
             )
         return 0
@@ -254,20 +286,28 @@ def _handle_process_photos(args: argparse.Namespace) -> int:
             print_box(
                 "پردازش تصاویر",
                 [
+                    ("وضعیت", "موفقیت‌آمیز"),
+                    ("---", "جزئیات"),
                     ("شماره دانشجویی", args.id),
                     ("پذیرفته‌شده", res["accepted"]),
                     ("ردشده", len(res["rejected"])),
                     ("امبدینگ", saved_fa),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", "شروع جلسه حضور و غیاب با 'manage.py start-session'"),
                 ],
             )
         else:
             print_box(
-                "Photos processed",
+                "Photos Processed",
                 [
+                    ("Status", "Success"),
+                    ("---", "Details"),
                     ("Student ID", args.id),
                     ("Accepted", res["accepted"]),
                     ("Rejected", len(res["rejected"])),
                     ("Embedding", saved),
+                    ("---", "Next Step"),
+                    ("Next step", "Start an attendance session with 'manage.py start-session'"),
                 ],
             )
         return 0
@@ -285,37 +325,70 @@ def _handle_list_students(args: argparse.Namespace) -> int:
             print("No students found in the database.")
         return 0
 
-    if args.lang == "fa":
-        headers = ["شناسه", "رشته", "ترم", "عکس‌ها", "امبدینگ"]
-        rows = [
-            [
-                s["student_id"],
-                s.get("major") or "-",
-                s.get("term") or "-",
-                s.get("photo_count", 0),
-                "دارد" if s.get("has_embedding") else "ندارد",
-            ]
-            for s in students
-        ]
-        print_table(headers, rows)
-        print("\nاسامی دانشجویان:")
-        for s in students:
-            print(f"  {s['student_id']}: {_format_bidi_name(s['full_name'])}")
-    else:
-        headers = ["Student ID", "Major", "Term", "Photos", "Embedding"]
-        rows = [
-            [
-                s["student_id"],
-                s.get("major") or "-",
-                s.get("term") or "-",
-                s.get("photo_count", 0),
-                "Yes" if s.get("has_embedding") else "No",
-            ]
-            for s in students
-        ]
-        print_table(headers, rows)
+    total = len(students)
+    with_emb = sum(1 for s in students if s.get("has_embedding"))
+    without_emb = total - with_emb
 
-        if args.show_names:
+    if args.compact:
+        if args.lang == "fa":
+            headers = ["شناسه", "رشته", "ترم", "عکس‌ها", "امبدینگ"]
+            rows = [
+                [
+                    s["student_id"],
+                    s.get("major") or "-",
+                    s.get("term") or "-",
+                    s.get("photo_count", 0),
+                    "دارد" if s.get("has_embedding") else "ندارد",
+                ]
+                for s in students
+            ]
+            print_table(headers, rows)
+            print(f"مجموع دانشجویان: {total} | دارای امبدینگ: {with_emb} | فاقد امبدینگ: {without_emb}")
+        else:
+            headers = ["Student ID", "Major", "Term", "Photos", "Embedding"]
+            rows = [
+                [
+                    s["student_id"],
+                    sanitize_text(s.get("major"), "(Persian)"),
+                    s.get("term") or "-",
+                    s.get("photo_count", 0),
+                    "Yes" if s.get("has_embedding") else "No",
+                ]
+                for s in students
+            ]
+            print_table(headers, rows)
+            print(f"Total students: {total} | With embedding: {with_emb} | Without: {without_emb}")
+    else:
+        for idx, s in enumerate(students, 1):
+            if args.lang == "fa":
+                title = f"دانشجو {idx} از {total}"
+                items = [
+                    ("شماره دانشجویی", s["student_id"]),
+                    ("ترم", s.get("term") or "-"),
+                    ("عکس‌ها", s.get("photo_count", 0)),
+                    ("امبدینگ", "دارد" if s.get("has_embedding") else "ندارد"),
+                ]
+            else:
+                title = f"Student {idx} of {total}"
+                items = [
+                    ("Student ID", s["student_id"]),
+                    ("Term", s.get("term") or "-"),
+                    ("Photos", s.get("photo_count", 0)),
+                    ("Embedding", "Yes" if s.get("has_embedding") else "No"),
+                ]
+            print_box(title, items)
+
+        if args.lang == "fa":
+            print(f"مجموع دانشجویان: {total} | دارای امبدینگ: {with_emb} | فاقد امبدینگ: {without_emb}")
+        else:
+            print(f"Total students: {total} | With embedding: {with_emb} | Without: {without_emb}")
+
+    if args.show_names:
+        if args.lang == "fa":
+            print("\nاسامی دانشجویان:")
+            for s in students:
+                print(f"  {s['student_id']}: {_format_bidi_name(s['full_name'])}")
+        else:
             print("\nNames (Persian):")
             for s in students:
                 print(f"  {s['student_id']}: {_format_bidi_name(s['full_name'])}")
@@ -333,20 +406,28 @@ def _handle_start_session(args: argparse.Namespace) -> int:
             print_box(
                 "شروع جلسه",
                 [
+                    ("وضعیت", "فعال"),
+                    ("---", "جزئیات"),
                     ("شناسه جلسه", session["id"]),
                     ("شناسه درس", session["course_id"]),
                     ("حد تأخیر", f"{session['late_after_minutes']} دقیقه"),
                     ("زمان شروع", session["started_at"]),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", f"اجرای 'python main_test.py --session-id {session['id']}' جهت ثبت حضور"),
                 ],
             )
         else:
             print_box(
-                "Session started",
+                "Session Started",
                 [
+                    ("Status", "Active"),
+                    ("---", "Details"),
                     ("Session ID", session["id"]),
                     ("Course ID", session["course_id"]),
                     ("Late after", f"{session['late_after_minutes']} min"),
                     ("Started at", session["started_at"]),
+                    ("---", "Next Step"),
+                    ("Next step", f"Run 'python main_test.py --session-id {session['id']}' to take attendance"),
                 ],
             )
         return 0
@@ -362,26 +443,135 @@ def _handle_close_session(args: argparse.Namespace) -> int:
             print_box(
                 "پایان جلسه",
                 [
+                    ("وضعیت", "بسته شد"),
+                    ("---", "جزئیات"),
                     ("شناسه جلسه", session["id"]),
                     ("زمان شروع", session["started_at"]),
-                    ("زمان پایان", session["ended_at"]),
-                    ("وضعیت", session["status"]),
+                    ("زمان پایان", session["ended_at"] or "-"),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", f"صدور گزارش اکسل با 'manage.py report --session-id {session['id']}'"),
                 ],
             )
         else:
             print_box(
-                "Session closed",
+                "Session Closed",
                 [
+                    ("Status", "Closed"),
+                    ("---", "Details"),
                     ("Session ID", session["id"]),
                     ("Started at", session["started_at"]),
-                    ("Ended at", session["ended_at"]),
-                    ("Status", session["status"]),
+                    ("Ended at", session["ended_at"] or "-"),
+                    ("---", "Next Step"),
+                    ("Next step", f"Export report with 'manage.py report --session-id {session['id']}'"),
                 ],
             )
         return 0
     except AppError as err:
         print(_format_error(err, args.lang), file=sys.stderr)
         return 1
+
+
+def _handle_session_summary(args: argparse.Namespace) -> int:
+    try:
+        session = session_manager.get_session(args.id)
+        summary = attendance_service.get_session_summary(args.id)
+        roster = attendance_service.get_session_attendance(args.id)
+
+        if args.lang == "fa":
+            items: list[tuple[str, Any]] = [
+                ("وضعیت", session["status"]),
+                ("زمان شروع", session["started_at"]),
+                ("زمان پایان", session["ended_at"] or "-"),
+                ("حد تأخیر", f"{session['late_after_minutes']} دقیقه"),
+                ("---", "آمار حضور و غیاب"),
+                ("حاضر", summary["present"]),
+                ("تأخیر", summary["late"]),
+                ("غایب", summary["absent"]),
+                ("مجموع کلاس", summary["total"]),
+                ("---", "فهرست وضعیت دانشجویان"),
+            ]
+            if roster:
+                for r in roster:
+                    src = " (چهره)" if r.get("source") == "face" else (" (دستی)" if r.get("source") == "manual" else "")
+                    items.append((r["student_id"], f"{r['status']}{src}"))
+            else:
+                items.append(("فهرست", "هیچ دانشجویی ثبت نشده است"))
+            print_box(f"خلاصه جلسه شماره {args.id}", items)
+        else:
+            items = [
+                ("Status", session["status"]),
+                ("Started at", session["started_at"]),
+                ("Ended at", session["ended_at"] or "-"),
+                ("Late threshold", f"{session['late_after_minutes']} min"),
+                ("---", "Attendance Stats"),
+                ("Present", summary["present"]),
+                ("Late", summary["late"]),
+                ("Absent", summary["absent"]),
+                ("Total roster", summary["total"]),
+                ("---", "Student Records"),
+            ]
+            if roster:
+                for r in roster:
+                    src = f" ({r['source']})" if r.get("source") else ""
+                    items.append((r["student_id"], f"{r['status']}{src}"))
+            else:
+                items.append(("Roster", "No students registered"))
+            print_box(f"Session #{args.id} Summary", items)
+        return 0
+    except AppError as err:
+        print(_format_error(err, args.lang), file=sys.stderr)
+        return 1
+
+
+def _handle_status(lang: str) -> int:
+    students = enrollment.list_students()
+    total_students = len(students)
+    with_emb = sum(1 for s in students if s.get("has_embedding"))
+    without_emb = total_students - with_emb
+
+    active_session = session_manager.get_active_session()
+    if active_session:
+        active_desc = f"Session #{active_session['id']} (started {active_session['started_at']})"
+        active_desc_fa = f"جلسه شماره {active_session['id']} (شروع در {active_session['started_at']})"
+    else:
+        active_desc = "None"
+        active_desc_fa = "ندارد"
+
+    sessions = session_manager.list_sessions(limit=500)
+    total_sessions = len(sessions)
+
+    report_files = list(config.REPORTS_DIR.glob("*.xlsx")) if config.REPORTS_DIR.exists() else []
+    total_reports = len(report_files)
+
+    if lang == "fa":
+        items = [
+            ("وضعیت", "عملیاتی"),
+            ("---", "دانشجویان"),
+            ("کل دانشجویان", total_students),
+            ("دارای امبدینگ", with_emb),
+            ("فاقد امبدینگ", without_emb),
+            ("---", "جلسات"),
+            ("جلسه فعال", active_desc_fa),
+            ("کل جلسات", total_sessions),
+            ("---", "گزارش‌ها"),
+            ("گزارش‌های اکسل", f"{total_reports} فایل در reports/"),
+        ]
+        print_box("وضعیت سامانه", items)
+    else:
+        items = [
+            ("Status", "Operational"),
+            ("---", "Students"),
+            ("Total students", total_students),
+            ("With embedding", with_emb),
+            ("Without embedding", without_emb),
+            ("---", "Sessions"),
+            ("Active session", active_desc),
+            ("Total sessions", total_sessions),
+            ("---", "Reports"),
+            ("Excel reports", f"{total_reports} files in reports/"),
+        ]
+        print_box("System Status", items)
+    return 0
 
 
 def _handle_report(args: argparse.Namespace) -> int:
@@ -392,16 +582,24 @@ def _handle_report(args: argparse.Namespace) -> int:
                 print_box(
                     "صدور گزارش جلسه",
                     [
+                        ("وضعیت", "موفقیت‌آمیز"),
+                        ("---", "جزئیات"),
                         ("شناسه جلسه", args.session_id),
                         ("مسیر فایل", str(path)),
+                        ("---", "گام بعدی"),
+                        ("گام بعدی", "باز کردن فایل گزارش در پوشه reports/"),
                     ],
                 )
             else:
                 print_box(
-                    "Session report exported",
+                    "Session Report Exported",
                     [
+                        ("Status", "Success"),
+                        ("---", "Details"),
                         ("Session ID", args.session_id),
                         ("File path", str(path)),
+                        ("---", "Next Step"),
+                        ("Next step", "Open Excel report file in reports/ directory"),
                     ],
                 )
             return 0
@@ -439,16 +637,24 @@ def _handle_report(args: argparse.Namespace) -> int:
             print_box(
                 "صدور گزارش روزانه",
                 [
+                    ("وضعیت", "موفقیت‌آمیز"),
+                    ("---", "جزئیات"),
                     ("تاریخ میلادی", g_date_iso),
                     ("مسیر فایل", str(path)),
+                    ("---", "گام بعدی"),
+                    ("گام بعدی", "باز کردن فایل گزارش روزانه در پوشه reports/"),
                 ],
             )
         else:
             print_box(
-                "Daily report exported",
+                "Daily Report Exported",
                 [
-                    ("Date (Gregorian)", g_date_iso),
+                    ("Status", "Success"),
+                    ("---", "Details"),
+                    ("Date", g_date_iso),
                     ("File path", str(path)),
+                    ("---", "Next Step"),
+                    ("Next step", "Open Excel report file in reports/ directory"),
                 ],
             )
         return 0
@@ -490,6 +696,12 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
 
+    if getattr(args, "lang", "en") == "fa":
+        print(
+            "Warning: Windows PowerShell console may not render bidirectional Persian text correctly.\n",
+            file=sys.stderr,
+        )
+
     handlers = {
         "init-db": lambda: _handle_init_db(args.lang),
         "add-student": lambda: _handle_add_student(args),
@@ -498,6 +710,8 @@ def main(argv: list[str] | None = None) -> int:
         "list-students": lambda: _handle_list_students(args),
         "start-session": lambda: _handle_start_session(args),
         "close-session": lambda: _handle_close_session(args),
+        "session-summary": lambda: _handle_session_summary(args),
+        "status": lambda: _handle_status(args.lang),
         "report": lambda: _handle_report(args),
         "run": lambda: _handle_run(args),
     }
